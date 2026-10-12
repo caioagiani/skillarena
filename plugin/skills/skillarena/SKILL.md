@@ -52,7 +52,8 @@ An interrupted run resumes with `--run-id <id>`.
 - If the baseline already passes ~100%, pass rate can't improve. Compare cost, tokens, churn and
   false "done" instead. Generated tasks are already calibrated: ones the baseline always solved were
   made harder.
-- Support and ops skills get workflow tasks: a conversation with a simulated customer, policy docs
+- Support and ops skills can get workflow tasks with `--beta-workflows` (beta; read transcripts before
+  trusting them): a conversation with a simulated customer, policy docs
   and mock tools with the names the skill uses. They need `--agent claude-code`. If skillarena says it fell back to the
   built-in coding suite (e.g. a writing skill, or another agent), say so: that suite can't show
   whether such a skill helps in its own domain.

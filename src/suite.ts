@@ -26,6 +26,8 @@ export interface SuiteOptions {
   calibrate: boolean;
   concurrency: number;
   refresh: boolean;
+  /** Generate workflow tasks for tool-driven skills (beta). */
+  workflows?: boolean;
 }
 
 /** An independent reviewer rejects tasks whose hidden tests a careful engineer couldn't anticipate. */
@@ -163,6 +165,10 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
       continue;
     }
     describe(skill, analysis);
+    if (analysis.domain === "tool-workflow" && !o.workflows) {
+      log.warn(`${skill.id} drives tools (support/ops). Generated workflow tasks are in beta: add --beta-workflows to try them. Using the built-in suite for it.`);
+      continue;
+    }
     if (analysis.domain === "tool-workflow" && !o.agent.mcp) {
       log.warn(`${skill.id} drives tools; its generated tasks need mock tools over MCP, which ${o.agent.id} can't serve yet. Using the built-in suite for it.`);
       continue;

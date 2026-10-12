@@ -121,14 +121,15 @@ Hard rules:
   confirm one step at a time.
 - tools.json "rules" are the business rules of the real deployment. The docs you write in repo/ MUST
   agree with every one of them that the scenario touches (state them there, so any agent can follow
-  them), and hidden tests must never require behaviour that contradicts them. You may add rules the
-  scenario needs, as long as they don't conflict. An agent that follows these rules exactly and serves
+  them), and hidden tests must never require behaviour that contradicts them. Do NOT invent extra
+  procedure (checks, confirmations, ordering) beyond these rules: only facts of the scenario's world
+  (prices, dates, eligibility) may be added. An agent that follows these rules exactly and serves
   the customer well must pass.
 - If tools.json comes with a "runtimeContext" list, start the prompt with that context as the runtime
   would give it (e.g. "[Canal: WhatsApp · Contato: +55 11 98765-4321 · Data: 2026-10-12]"), consistent
   with the data.
 - Grade outcomes: the right records changed with the right values, the wrong ones untouched, and the
-  reply. Use calls.jsonl only for effects that leave no trace in the data (a message sent to the right
+  reply. NEVER test that a read-only tool was called. Use calls.jsonl only for effects that leave no trace in the data (a message sent to the right
   number with the right amount), never for the order or count of read-only calls.
 - Reply checks look for key facts with tolerant matching (amounts, dates in the format the docs
   require, a reference number), never exact wording. The docs state the reply language and formats.

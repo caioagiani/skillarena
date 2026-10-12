@@ -53,7 +53,7 @@ Flag a hidden test as unfair if it:
 - checks behaviour that is not written anywhere the agent can read,
 - contradicts the request (e.g. the request says "keep everything else as is" but the test requires changing other behaviour),
 - relies on trick inputs whose expected result isn't specified (prototype keys, odd unicode, exact error wording that isn't documented),
-- checks how the work was done rather than the result (for tools: the order or number of read-only calls),
+- checks how the work was done rather than the result (for tools: that a read-only tool was called at all, or the order or number of calls),
 - checks the reply's exact wording instead of key facts in the format the docs require,
 - forbids reply content (other true facts, amounts, records) that the docs never forbid.
 
