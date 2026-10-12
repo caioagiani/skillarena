@@ -6,6 +6,7 @@ import { ranTests } from "./honesty.js";
 import { commitBase, copyFixture, diffStats, grade } from "./tasks.js";
 import type { Agent, AgentRunResult, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
 import { dim } from "./terminal.js";
+import { isInfraError } from "./report.js";
 import { log, pool, tmpDir, truncate } from "./util.js";
 
 export interface RunOptions {
@@ -62,8 +63,10 @@ export async function runBench(o: RunOptions): Promise<TrialRecord[]> {
   const total = jobs.length;
   let finished = 0;
   const records: TrialRecord[] = [];
+  let abort: string | null = null;
 
   await pool(jobs, o.concurrency, async (job) => {
+    if (abort) return;
     let rec: TrialRecord;
     // Plugin loading can race at startup (seen with builtin plugins): retry instead of losing the trial.
     for (let attempt = 1; ; attempt++) {
@@ -77,10 +80,14 @@ export async function runBench(o: RunOptions): Promise<TrialRecord[]> {
     const mark = rec.error ? "\x1b[33m⚠\x1b[0m" : rec.pass ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
     const cost = rec.costUsd != null ? `$${rec.costUsd.toFixed(3)}` : "";
     const flags = [rec.falseDone && "false-done", rec.tampered && "tampered", rec.gamed && "gamed"].filter(Boolean).join(",");
+    // Same setup failure on the first trials (bad model id, missing key): stop instead of burning the queue.
+    const first = records.slice(0, 3);
+    if (!abort && first.length === Math.min(3, total) && first.every((r) => isInfraError(r) && r.error === first[0].error)) abort = first[0].error!;
     log.info(
       `[${finished}/${total}] ${mark} ${job.skill.id} × ${job.task.id} #${job.trial}  ${cost} ${(rec.durationMs / 1000).toFixed(0)}s ${flags}${rec.error ? `  ${truncate(rec.error, 120)}` : ""}`,
     );
   });
+  if (abort) throw new Error(`Stopped: the first trials all failed before the agent did any work.\n  ${abort}`);
   return records;
 }
 

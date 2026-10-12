@@ -130,3 +130,13 @@ test("tracks skill invocations, hooks and whether the skill was used", () => {
   assert.equal(skillUsed({ id: "k", install: { type: "instructions", path: "CLAUDE.md" } }, { skillCalls: [], hooks: [] }), null);
   assert.equal(skillUsed({ id: "none", install: null }, { skillCalls: [], hooks: [] }), null);
 });
+
+test("errors before the agent did any work are infra errors, not fails", async () => {
+  const { isInfraError } = await import("../dist/report.js");
+  const base = { turns: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, timedOut: false };
+  assert.equal(isInfraError({ ...base, error: "Model not found: x/y" }), true);
+  assert.equal(isInfraError({ ...base, error: "harness: boom", turns: 3, inputTokens: 9 }), true);
+  assert.equal(isInfraError({ ...base, error: "agent error: max turns", turns: 3, inputTokens: 9 }), false);
+  assert.equal(isInfraError({ ...base, error: "timeout", timedOut: true }), false);
+  assert.equal(isInfraError({ ...base }), false);
+});

@@ -40,7 +40,10 @@ export interface Summary {
 
 /** Infrastructure failures say nothing about the skill, so they are excluded instead of counted as fails. */
 export function isInfraError(r: TrialRecord): boolean {
-  return Boolean(r.error && (r.error.startsWith("harness:") || r.error.startsWith("no result event")));
+  if (!r.error || r.timedOut) return false;
+  // The agent never got to work (bad model id, auth, network): nothing to do with the skill.
+  const idle = r.turns === 0 && r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens === 0;
+  return r.error.startsWith("harness:") || r.error.startsWith("no result event") || idle;
 }
 
 const rate = (rs: TrialRecord[], f: (r: TrialRecord) => boolean) => (rs.length ? rs.filter(f).length / rs.length : NaN);
