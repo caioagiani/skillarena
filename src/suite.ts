@@ -10,7 +10,7 @@ import { readResults, runBench } from "./runner.js";
 import { loadTasks } from "./tasks.js";
 import { bold, dim, green, yellow } from "./terminal.js";
 import type { Agent, ResolvedSkill, TaskSpec } from "./types.js";
-import { log, pool } from "./util.js";
+import { log, pool, QuotaError } from "./util.js";
 
 export type SuiteMode = "auto" | "builtin" | "generated";
 
@@ -99,7 +99,10 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
         isolate: o.isolate,
         failing: [...new Set(failed.flatMap((r) => r.failedTests))],
         attempts: failed.slice(0, 2).map((r) => r.finalMessage),
-      }).catch(() => null);
+      }).catch((err) => {
+        if (err instanceof QuotaError) throw err;
+        return null;
+      });
       if (a && !a.fair) unfair.push({ id, issues: a.issues });
     });
     if (!unfair.length) return;
@@ -154,6 +157,7 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
     try {
       ({ analysis, key } = await analyzeSkill(skill, { model: o.generatorModel, isolate: o.isolate, refresh: o.refresh }));
     } catch (err) {
+      if (err instanceof QuotaError) throw err;
       log.warn(`${skill.id}: ${err instanceof Error ? err.message : String(err)}. Using the built-in suite for it.`);
       continue;
     }

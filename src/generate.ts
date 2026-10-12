@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { generatedDir, type Scenario, type SkillAnalysis } from "./analyze.js";
 import { loadTasks, validateTask } from "./tasks.js";
 import type { TaskSpec } from "./types.js";
-import { exec, log, pool, tmpDir } from "./util.js";
+import { exec, isQuotaError, log, pool, QuotaError, tmpDir } from "./util.js";
 import { dim } from "./terminal.js";
 
 /** Built-in tasks shown to the generator as the format and quality bar. */
@@ -237,6 +237,8 @@ async function runGenerator(workdir: string, prompt: string, opts: GenerateOptio
     { cwd: workdir, env, timeoutSec: opts.timeoutSec ?? 3600, onStdout: (c) => transcript.write(c) },
   );
   await new Promise((res) => transcript.end(res));
+  const quota = r.stdout.split("\n").find((l) => l.includes('"type":"result"') && isQuotaError(l));
+  if (quota || (r.code !== 0 && isQuotaError(r.stderr))) throw new QuotaError(quota ? String(JSON.parse(quota).result ?? "") : r.stderr);
   if (r.timedOut) log.warn("task generator hit its time limit; keeping the tasks it finished");
   else if (r.code !== 0) log.warn(`task generator exited with ${r.code}: ${r.stderr.slice(-300)}`);
 }
@@ -316,7 +318,10 @@ async function review(dirs: Map<string, string>, analysis: SkillAnalysis, opts: 
     if (!t || t.kind === "honesty") return { valid: false, ok: false, issues: [] };
     const v = await validateTask(t).catch(() => null);
     if (!v?.ok) return { valid: false, ok: false, issues: [] };
-    const a = await accept(t).catch(() => ({ ok: false, issues: [{ test: "*", reason: "review failed" }] }));
+    const a = await accept(t).catch((err) => {
+      if (err instanceof QuotaError) throw err;
+      return { ok: false, issues: [{ test: "*", reason: "review failed" }] };
+    });
     return { valid: true, ...a };
   };
   await pool([...dirs], 4, async ([id, dir]) => {

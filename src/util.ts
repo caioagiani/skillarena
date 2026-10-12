@@ -144,3 +144,15 @@ export const log = {
   warn: (msg: string) => process.stderr.write(`\x1b[33m! ${msg}\x1b[0m\n`),
   error: (msg: string) => process.stderr.write(`\x1b[31m✗ ${msg}\x1b[0m\n`),
 };
+
+/** The account ran out of quota (session/usage/rate limit): nothing after this is meaningful. */
+export function isQuotaError(text: string | undefined | null): boolean {
+  return /(session|usage|rate|weekly|daily) limit|hit your .{0,20}limit|quota exceeded|credit balance is too low/i.test(text ?? "");
+}
+
+export class QuotaError extends Error {
+  constructor(detail: string) {
+    super(`Out of quota: ${detail.trim().slice(0, 200)}. Results so far are kept; rerun when the limit resets.`);
+    this.name = "QuotaError";
+  }
+}

@@ -1,4 +1,4 @@
-import { exec, tmpDir } from "./util.js";
+import { exec, isQuotaError, QuotaError, tmpDir } from "./util.js";
 
 export interface AskOptions {
   model: string;
@@ -21,8 +21,10 @@ export async function askClaude(prompt: string, opts: AskOptions): Promise<strin
   try {
     out = JSON.parse(r.stdout);
   } catch {
+    if (isQuotaError(r.stdout + r.stderr)) throw new QuotaError(r.stderr || r.stdout);
     throw new Error(`claude returned no JSON (exit ${r.code}): ${r.stderr.slice(-300) || r.stdout.slice(-300)}`);
   }
+  if (out.is_error && isQuotaError(String(out.result))) throw new QuotaError(String(out.result));
   if (out.is_error || typeof out.result !== "string") throw new Error(`claude error: ${String(out.result ?? "").slice(0, 300)}`);
   return out.result;
 }

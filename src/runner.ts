@@ -7,7 +7,7 @@ import { commitBase, copyFixture, diffStats, grade } from "./tasks.js";
 import type { Agent, AgentRunResult, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
 import { dim } from "./terminal.js";
 import { isInfraError } from "./report.js";
-import { log, pool, tmpDir, truncate } from "./util.js";
+import { isQuotaError, log, pool, QuotaError, tmpDir, truncate } from "./util.js";
 import { collectRun, startMock } from "./workflow.js";
 import { customerReply, type Turn } from "./customer.js";
 
@@ -93,12 +93,15 @@ export async function runBench(o: RunOptions): Promise<TrialRecord[]> {
     const flags = [rec.falseDone && "false-done", rec.tampered && "tampered", rec.gamed && "gamed"].filter(Boolean).join(",");
     // Same setup failure on the first trials (bad model id, missing key): stop instead of burning the queue.
     const first = records.slice(0, 3);
+    if (!abort && isQuotaError(rec.error)) abort = new QuotaError(rec.error!).message;
     if (!abort && first.length === Math.min(3, total) && first.every((r) => isInfraError(r) && r.error === first[0].error)) abort = first[0].error!;
     log.info(
       `[${finished}/${total}] ${mark} ${job.skill.id} × ${job.task.id} #${job.trial}  ${cost} ${(rec.durationMs / 1000).toFixed(0)}s ${flags}${rec.error ? `  ${truncate(rec.error, 120)}` : ""}`,
     );
   });
-  if (abort) throw new Error(`Stopped: the first trials all failed before the agent did any work.\n  ${abort}`);
+  const stop = abort as string | null; // assigned inside the pool callback
+  if (stop?.startsWith("Out of quota")) throw new QuotaError(stop.replace(/^Out of quota: /, "").replace(/\. Results so far.*$/, ""));
+  if (stop) throw new Error(`Stopped: the first trials all failed before the agent did any work.\n  ${stop}`);
   return records;
 }
 

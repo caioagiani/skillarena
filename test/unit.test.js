@@ -221,3 +221,10 @@ test("mock state changes survive a failing call", async () => {
   assert.equal((await callTool(mock, run, "t", {})).ok, true);
   assert.equal(JSON.parse(readFileSync(path.join(run, "db.json"), "utf8")).left, 0);
 });
+
+test("recognises quota errors", async () => {
+  const { isQuotaError } = await import("../dist/util.js");
+  assert.ok(isQuotaError("agent error: success You've hit your session limit · resets 4pm"));
+  assert.ok(isQuotaError("Claude AI usage limit reached"));
+  assert.ok(!isQuotaError("hidden tests failed: limit of 3 retries"));
+});
