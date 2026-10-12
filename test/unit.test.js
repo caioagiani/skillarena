@@ -99,6 +99,7 @@ test("detects install type from files", () => {
 test("splits agent args", async () => {
   const { splitArgs } = await import("../dist/util.js");
   assert.deepEqual(splitArgs(`--autocompact 100000 --append-system-prompt "be brief" -x 'a b'`), ["--autocompact", "100000", "--append-system-prompt", "be brief", "-x", "a b"]);
+  assert.deepEqual(splitArgs(`-c 'model_catalog_json="/a b/c.json"' --x="1 2" a\\ b ""`), ["-c", 'model_catalog_json="/a b/c.json"', "--x=1 2", "a b", ""]);
 });
 
 test("stats", () => {
@@ -139,4 +140,13 @@ test("errors before the agent did any work are infra errors, not fails", async (
   assert.equal(isInfraError({ ...base, error: "agent error: max turns", turns: 3, inputTokens: 9 }), false);
   assert.equal(isInfraError({ ...base, error: "timeout", timedOut: true }), false);
   assert.equal(isInfraError({ ...base }), false);
+});
+
+test("timeout returns even if a detached grandchild keeps the pipes open", async () => {
+  const { exec } = await import("../dist/util.js");
+  const t = Date.now();
+  // setsid-like: the grandchild starts its own process group and inherits stdout.
+  const r = await exec(process.execPath, ["-e", `require("child_process").spawn(process.execPath, ["-e", "setTimeout(()=>{}, 60000)"], { detached: true, stdio: ["ignore", "inherit", "inherit"] }); setTimeout(()=>{}, 60000)`], { timeoutSec: 1 });
+  assert.equal(r.timedOut, true);
+  assert.ok(Date.now() - t < 10_000, `took ${Date.now() - t}ms`);
 });

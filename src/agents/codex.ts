@@ -8,14 +8,17 @@ import { installSkill } from "./install.js";
  * instructions as AGENTS.md, skill folders under .agents/skills. Plugins are approximated
  * by copying the plugin's `skills/` folder and root AGENTS.md when present.
  */
-export function codex(opts: { isolate: boolean }): Agent {
+export function codex(opts: { isolate: boolean; extraArgs?: string[] }): Agent {
+  const local = (opts.extraArgs ?? []).includes("--oss");
   return {
     id: "codex",
 
     async preflight() {
       if (!(await which("codex"))) throw new Error("`codex` not found. Install: npm i -g @openai/codex");
-      if (opts.isolate && !process.env.OPENAI_API_KEY && !process.env.CODEX_API_KEY) {
-        throw new Error("Isolated Codex runs need OPENAI_API_KEY (run `npx skillarena login OPENAI_API_KEY`) or pass --no-isolate.");
+      if (opts.isolate && !local && !process.env.OPENAI_API_KEY && !process.env.CODEX_API_KEY) {
+        throw new Error(
+          'Isolated Codex runs need OPENAI_API_KEY (run `npx skillarena login OPENAI_API_KEY`), a local model (--agent-args "--oss"), or --no-isolate.',
+        );
       }
     },
 
@@ -40,7 +43,7 @@ export function codex(opts: { isolate: boolean }): Agent {
       const env: NodeJS.ProcessEnv = { ...process.env };
       if (opts.isolate) {
         env.CODEX_HOME = input.configDir;
-        env.CODEX_API_KEY ??= process.env.OPENAI_API_KEY;
+        if (!env.CODEX_API_KEY && process.env.OPENAI_API_KEY) env.CODEX_API_KEY = process.env.OPENAI_API_KEY;
       }
 
       const transcript = createWriteStream(input.transcriptPath);

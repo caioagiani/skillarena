@@ -11,6 +11,8 @@ export interface AgentOptions {
   provider?: Provider;
   baseUrl?: string;
   model?: string;
+  /** Extra agent CLI flags (e.g. Codex --oss for local models). */
+  extraArgs?: string[];
 }
 
 export function getAgent(id: string, opts: AgentOptions): Agent {
