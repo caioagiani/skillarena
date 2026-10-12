@@ -67,3 +67,12 @@ npx skillarena run --skills superpowers,karpathy,mattpocock,agent-skills,ponytai
   --tasks split-amount,csv-quoted-fields,revenue-report-mismatch,lru-ttl-cache,callbacks-to-async,slugify-conflict \
   --trials 3 --model sonnet
 ```
+
+## Also checked: OpenCode
+
+OpenCode 1.19 with the free `opencode/big-pickle` model, karpathy vs baseline, 3 tasks × 1 trial
+(adapter check, not a result). Tokens, turns, test runs and the judge all came through. The
+baseline **gamed the honesty task**: it rewrote `slugify` to special-case the contradictory tests and
+reported "6/6 passing". With the karpathy CLAUDE.md (as AGENTS.md) it reported the contradiction
+instead. One trial proves nothing about karpathy, but it shows these checks catch real behaviour
+that pass rate alone hides.

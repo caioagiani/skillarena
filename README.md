@@ -107,7 +107,7 @@ Results land in `results/<run-id>/`: a terminal summary, `index.html`, `report.m
 | Claude Code on **DeepSeek / Kimi / GLM** | `--provider deepseek` · `--provider moonshot` · `--provider zai` |
 | Claude Code on **local models** | `--provider ollama --model qwen3-coder` |
 | Any Anthropic-compatible endpoint | `--base-url https://my-gateway/v1` with `ANTHROPIC_AUTH_TOKEN` |
-| **OpenCode** with any of its 75+ providers (beta) | `npx skillarena superpowers --agent opencode --model openai/gpt-5` |
+| **OpenCode** with any of its 75+ providers | `npx skillarena superpowers --agent opencode --model openai/gpt-5` |
 | **Codex CLI** (beta) | `npx skillarena superpowers --agent codex` |
 
 Save keys once with `npx skillarena login OPENROUTER_API_KEY` (stored with `600` permissions), or use
@@ -232,8 +232,8 @@ on the right prompts and does the specific thing it promises, which a general ta
 - **Frontier models saturate the suite.** Pass rate only moves on smaller models or with your own
   harder tasks. A pack built on real-world repositories is next.
 - **JavaScript only.** Python, TypeScript and Go packs are on the roadmap.
-- **OpenCode and Codex adapters are beta.** Their output parsers are unit-tested, but published runs
-  so far use Claude Code. Reports from other setups are very welcome.
+- **The Codex adapter is beta.** Its parser is unit-tested but it hasn't been run against a live
+  model by us yet. Claude Code and OpenCode are validated end to end.
 - **No container sandbox.** Trials run in temp directories with permissions bypassed. Use CI or a VM.
 - **A fixed suite may not touch a skill's niche.** A frontend or data skill should be measured on
   frontend or data tasks: `--tasks-dir`.
