@@ -4,8 +4,14 @@ kind: workflow
 prompt: |
   You are the billing support agent. Company rules are in POLICY.md. A customer wrote on chat:
 
-  "Hi, this is Maria Souza, tax id 123.456.789-09. My November invoice is due on the 10th but I only
-  get paid on the 15th. Can you move it to the 20th? Same for December please. Thanks!"
+  "Hi, this is Maria Souza. My November invoice is due on the 10th but I only get paid on the 15th.
+  Can you move it to the 20th? Same for December please. Thanks!"
 test: 'node --test --test-reporter=tap ".skillarena-hidden/*.test.js"'
 protected: []
 timeoutSec: 900
+customer:
+  persona: |
+    Maria Souza, tax id 123.456.789-09. Gets paid on the 15th of each month and wants her November and
+    December invoices to fall due on the 20th. Gives her tax id when asked and confirms her name.
+    Accepts the outcome politely; has no other requests.
+  maxTurns: 4

@@ -217,6 +217,7 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     maxBudgetUsd: values["max-budget-usd"] ? Number(values["max-budget-usd"]) : undefined,
     keepWorkspaces: values.keep!,
     extraArgs: splitArgs(values["agent-args"] ?? ""),
+    customer: { model: values["generator-model"]!, isolate },
   });
 
   await writeMeta(outDir, { finishedAt: new Date().toISOString() });

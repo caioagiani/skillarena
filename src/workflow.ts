@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { TaskSpec } from "./types.js";
 import { tmpDir } from "./util.js";
+import type { Turn } from "./customer.js";
 
 /**
  * Workflow tasks: the agent handles a request (a customer message, an ops ticket) with mock tools
@@ -12,7 +13,7 @@ import { tmpDir } from "./util.js";
  *   mock/tools.mjs     export const server = "<mcp server name>"; export const tools = [{ name, description, inputSchema, run(args, db) }]
  *   mock/db.json       initial data the tools read and change
  *   solution/calls.json  reference tool calls [{ tool, args }], replayed by `validate`
- *   solution/reply.md    reference final message
+ *   solution/reply.md    reference reply (all agent messages, for conversations)
  *
  * Hidden tests read what happened from RUN_DIR in the workspace: calls.jsonl, db.json, reply.md.
  */
@@ -89,12 +90,19 @@ export async function startMock(task: TaskSpec): Promise<MockSession> {
   return { runDir, config, dispose: () => rm(root, { recursive: true, force: true }) };
 }
 
-/** Put what happened into the workspace for the hidden tests. Anything the agent wrote there is replaced. */
-export async function collectRun(runDir: string, workspace: string, reply: string): Promise<void> {
+/** Every agent message of the conversation, in order: what the customer was told. */
+export const replyText = (turns: Turn[]) => turns.filter((t) => t.role === "agent").map((t) => t.text.trim()).join("\n\n---\n\n");
+
+/**
+ * Put what happened into the workspace for the hidden tests: data, calls, reply.md (all agent
+ * messages) and conversation.json. Anything the agent wrote there is replaced.
+ */
+export async function collectRun(runDir: string, workspace: string, turns: Turn[]): Promise<void> {
   const dest = path.join(workspace, RUN_DIR);
   await rm(dest, { recursive: true, force: true });
   await cp(runDir, dest, { recursive: true });
-  await writeFile(path.join(dest, "reply.md"), reply);
+  await writeFile(path.join(dest, "reply.md"), replyText(turns));
+  await writeFile(path.join(dest, "conversation.json"), JSON.stringify(turns, null, 2));
 }
 
 /** Validation: replay the reference calls (or none, for the untouched fixture) into the workspace. */
@@ -110,7 +118,7 @@ export async function replayInto(task: TaskSpec, workspace: string, withSolution
       const replyFile = path.join(task.dir, "solution", "reply.md");
       reply = existsSync(replyFile) ? await readFile(replyFile, "utf8") : "";
     }
-    await collectRun(runDir, workspace, reply);
+    await collectRun(runDir, workspace, reply ? [{ role: "agent", text: reply }] : []);
   } finally {
     await rm(runDir, { recursive: true, force: true });
   }

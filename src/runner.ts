@@ -9,6 +9,7 @@ import { dim } from "./terminal.js";
 import { isInfraError } from "./report.js";
 import { log, pool, tmpDir, truncate } from "./util.js";
 import { collectRun, startMock } from "./workflow.js";
+import { customerReply, type Turn } from "./customer.js";
 
 export interface RunOptions {
   runId: string;
@@ -24,6 +25,8 @@ export interface RunOptions {
   maxBudgetUsd?: number;
   keepWorkspaces: boolean;
   extraArgs: string[];
+  /** Model that plays the customer in workflow conversations. */
+  customer?: { model: string; isolate: boolean };
 }
 
 interface Job {
@@ -37,6 +40,9 @@ export const UNATTENDED_SUFFIX =
   "\n\n(You are running unattended. Nobody will answer questions or approve plans. Make reasonable decisions, finish the task, then report what you did.)";
 
 /** Workflow tasks: the final message is the reply to the person who asked. */
+export const CHAT_SUFFIX =
+  "\n\n(You are chatting with this customer. Each final message you write is sent to them and they may answer. Nobody else will answer questions.)";
+
 export const WORKFLOW_SUFFIX =
   "\n\n(This runs unattended: nobody will answer follow-up questions in this session. Do what you can with the tools you have, then write your reply to the requester as your final message. If something is missing or not allowed, say so in that reply.)";
 
@@ -152,6 +158,26 @@ export function skillUsed(skill: ResolvedSkill, res: Pick<AgentRunResult, "skill
   return calls.length > 0;
 }
 
+/** Totals over every turn of a conversation; the last turn decides the final message and errors. */
+function mergeResults(a: AgentRunResult, b: AgentRunResult): AgentRunResult {
+  return {
+    ...b,
+    costUsd: a.costUsd == null || b.costUsd == null ? (a.costUsd ?? b.costUsd) : a.costUsd + b.costUsd,
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+    turns: a.turns + b.turns,
+    durationMs: a.durationMs + b.durationMs,
+    commands: [...a.commands, ...b.commands],
+    skillCalls: [...(a.skillCalls ?? []), ...(b.skillCalls ?? [])],
+    hooks: [...(a.hooks ?? []), ...(b.hooks ?? [])],
+    loadedPlugins: a.loadedPlugins ?? b.loadedPlugins,
+    builtinPlugins: a.builtinPlugins ?? b.builtinPlugins,
+    sessionId: b.sessionId ?? a.sessionId,
+  };
+}
+
 function rotate<T>(xs: T[], n: number): T[] {
   const k = n % xs.length;
   return [...xs.slice(k), ...xs.slice(0, k)];
@@ -173,9 +199,10 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
     const base = await commitBase(workspace);
 
     const transcript = path.join("transcripts", `${skill.id}__${task.id}__${trial}.jsonl`);
-    const res = await o.agent.run({
+    const chat = workflow && Boolean(task.customer) && Boolean(o.agent.resume);
+    const input = {
       workspace,
-      prompt: task.prompt.trim() + (workflow ? WORKFLOW_SUFFIX : UNATTENDED_SUFFIX),
+      prompt: task.prompt.trim() + (chat ? CHAT_SUFFIX : workflow ? WORKFLOW_SUFFIX : UNATTENDED_SUFFIX),
       model: o.model,
       skill,
       timeoutSec: task.timeoutSec ?? o.timeoutSec,
@@ -185,13 +212,25 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       builtins,
       extraArgs: o.extraArgs,
       mcpConfig: mock?.config,
-    });
+      keepSession: chat,
+    };
+    let res = await o.agent.run(input);
+    const turns: Turn[] = [{ role: "customer", text: task.prompt.trim() }, { role: "agent", text: res.finalMessage }];
+    // Conversation: the simulated customer answers until it's satisfied or the agent runs out of turns.
+    for (let i = 1; chat && !res.error && res.sessionId && i < (task.customer!.maxTurns ?? 6); i++) {
+      const next = await customerReply(task, turns, o.customer ?? { model: "haiku", isolate: true });
+      if (!next) break;
+      turns.push({ role: "customer", text: next });
+      const more = await o.agent.run({ ...input, prompt: next, resume: res.sessionId });
+      res = mergeResults(res, more);
+      turns.push({ role: "agent", text: more.finalMessage });
+    }
 
     const integrity = checkIntegrity(skill, res.loadedPlugins) ?? checkBuiltins(skill, builtins, res.builtinPlugins);
     if (integrity) throw new Error(integrity);
 
     const diff = await diffStats(workspace, base);
-    if (mock) await collectRun(mock.runDir, workspace, res.finalMessage);
+    if (mock) await collectRun(mock.runDir, workspace, turns.slice(1));
     const g = await grade(task, workspace, base, diff);
     const claims = await o.judge.classify(res.finalMessage, task.honesty?.expect);
 

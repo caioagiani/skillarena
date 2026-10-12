@@ -78,13 +78,18 @@ const WORKFLOW_EXAMPLES = ["support-due-date"];
 
 const WORKFLOW_FORMAT = `# Workflow task format
 
-The agent under test handles ONE incoming message (from a customer or an operator) with mock tools
-served over MCP. It sees the message (task.yaml prompt), the files in repo/ (policies, procedures,
+The agent under test handles a conversation with a customer (or an operator) using mock tools served
+over MCP. The task prompt is the first message. A simulated customer, played by a model from the
+persona in task.yaml, answers the agent's questions until the request is handled. It sees the message (task.yaml prompt), the files in repo/ (policies, procedures,
 price tables: what a person in that job would have), and the tools' names, descriptions and results.
 It never sees mock/, hidden/ or solution/.
 
 tasks/<id>/
-  task.yaml        id, title, kind: workflow, prompt, test, protected: [], timeoutSec: 900
+  task.yaml        id, title, kind: workflow, prompt, test, protected: [], timeoutSec: 900, and
+                     customer:
+                       persona: |   who the customer is, every fact they know (ids, unit, dates, preferences),
+                                    what they want, and how they answer (e.g. confirms the unit when asked)
+                       maxTurns: 6  agent replies allowed
   repo/            documents the agent can read, e.g. POLICY.md. Every rule the hidden tests rely on must
                    be written here, in the prompt, or be visible in tool descriptions or results.
   mock/tools.mjs   export const server = "<name>";
@@ -96,16 +101,22 @@ tasks/<id>/
   hidden/*.test.js node:test suite. It reads what happened from the workspace:
                      .skillarena-run/db.json      final data
                      .skillarena-run/calls.jsonl  one {tool, args, ok, result} per call, in order
-                     .skillarena-run/reply.md     the agent's final message (its reply to the requester)
+                     .skillarena-run/reply.md     every agent message of the conversation, separated by ---
+                     .skillarena-run/conversation.json  [{ role: "customer" | "agent", text }]
                    Keep a copy of the initial data in hidden/ if a test compares against it.
   solution/calls.json  reference tool calls: [{ "tool": "...", "args": { ... } }]
-  solution/reply.md    a reference reply
+  solution/reply.md    the reference agent messages (what a good agent tells the customer overall)
 
 task.yaml test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
 
 Hard rules:
 - Use the server and tool names in tools.json when it is not empty: the skill under test expects them.
-  Add other tools only if a scenario needs them. Descriptions say what a tool does, never the policy.
+  Mocks must accept EVERY input form tools.json lists (e.g. a lookup by tax id, phone or free text) and
+  return the fields it lists: the agent may use any of them. Add other tools only if a scenario needs
+  them. Descriptions say what a tool does, never the policy.
+- The persona must answer anything a careful agent would reasonably ask (identity, confirmation of the
+  record found, which option they prefer), so a careful agent is never stuck. Tests never depend on how
+  many turns the conversation took.
 - Grade outcomes: the right records changed with the right values, the wrong ones untouched, and the
   reply. Use calls.jsonl only for effects that leave no trace in the data (a message sent to the right
   number with the right amount), never for the order or count of read-only calls.
@@ -113,8 +124,8 @@ Hard rules:
   require, a reference number), never exact wording. The docs state the reply language and formats.
   A reply test may only REQUIRE what the docs say the reply must contain, and only FORBID what the
   docs explicitly forbid. Mentioning other true facts from the data is never wrong.
-- The prompt is the message as the requester wrote it, plus one line of context (e.g. "You are the
-  billing support agent. Company rules are in POLICY.md."). It never mentions tests, grading or skills.
+- The prompt is the customer's first message as they wrote it, plus one line of context (e.g. "You are
+  the billing support agent. Company rules are in POLICY.md."). It never mentions tests, grading or skills.
 - The untouched fixture (no tool calls, empty reply) MUST fail the hidden suite, and replaying
   solution/calls.json with solution/reply.md MUST pass it. Verify with: node check.mjs tasks/<id>
 `;
@@ -336,7 +347,7 @@ async function install(t: TaskSpec, dest: string): Promise<TaskSpec> {
   return { ...t, id, dir: path.join(dest, id) };
 }
 
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36).replace(/^-+|-+$/g, "");
+const slug = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36).replace(/^-+|-+$/g, "");
 
 /** Generate (or load cached) validated, reviewed tasks for a skill. Returns the folder that holds them. */
 export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis, opts: GenerateOptions & { refresh?: boolean }, accept: Accept): Promise<string> {

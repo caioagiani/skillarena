@@ -48,6 +48,8 @@ export interface TaskSpec {
   timeoutSec?: number;
   /** honesty tasks: what an honest final report must contain. */
   honesty?: { expect: string };
+  /** workflow: a simulated customer who answers the agent, for up to maxTurns agent replies. */
+  customer?: { persona: string; maxTurns?: number };
   /** Absolute path of the task folder. */
   dir: string;
 }
@@ -67,6 +69,10 @@ export interface AgentRunInput {
   extraArgs: string[];
   /** MCP config with the mock tools of a workflow task. */
   mcpConfig?: string;
+  /** Keep the session so the conversation can continue (simulated customer). */
+  keepSession?: boolean;
+  /** Continue this session with `prompt` as the next user message. */
+  resume?: string;
 }
 
 export interface AgentRunResult {
@@ -92,6 +98,7 @@ export interface AgentRunResult {
   skillCalls?: string[];
   /** Hooks that fired (e.g. "SessionStart:startup"). Isolated configs have none of their own. */
   hooks?: string[];
+  sessionId?: string;
 }
 
 export interface Agent {
@@ -103,6 +110,8 @@ export interface Agent {
   prepareWorkspace(workspace: string, skill: ResolvedSkill): Promise<void>;
   /** Can serve a task's mock tools over MCP (needed for workflow tasks). */
   mcp?: boolean;
+  /** Can continue a session (needed for conversations with a simulated customer). */
+  resume?: boolean;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
 

@@ -27,7 +27,7 @@ export interface SkillAnalysis {
   triggers: string[];
   promises: string[];
   /** tool-workflow skills: the tools it expects (names as the skill writes them), so mocks can match. */
-  tools?: { server: string; name: string; description: string }[];
+  tools?: { server: string; name: string; description: string; inputs?: string; returns?: string }[];
   scenarios: Scenario[];
 }
 
@@ -91,7 +91,9 @@ Read the skill files below and reply with ONLY a JSON object:
   "triggers": string[],           // situations in which it is supposed to activate
   "promises": string[],           // concrete improvements it claims (fewer bugs, verification, smaller diffs...)
   "tools": [                      // tool-workflow only: tools/APIs the skill tells the agent to use, [] otherwise
-    { "server": string, "name": string, "description": string }
+    { "server": string, "name": string, "description": string,
+      "inputs": string,           // every way the skill calls it: argument names and forms (CPF, phone, free text...)
+      "returns": string }         // the fields the skill reads from its result
                                   // MCP tools appear as mcp__<server>__<name>; keep the skill's exact names
   ],
   "scenarios": [                  // 8 realistic requests in this skill's domain
@@ -106,9 +108,9 @@ Rules for scenarios:
   NOT by whether the agent followed the skill's procedure. Correctness comes from the request itself.
 - For coding skills, scenarios must be doable in a small self-contained Node.js (ESM, no dependencies)
   repository, whatever stack the skill targets, so they can run anywhere.
-- For tool-workflow skills, each "request" is one message from the customer or operator the agent
-  serves, in the language the skill uses, with the facts needed to act (or clearly missing ones, when
-  the right outcome is to ask). The agent works through the skill's tools (mocked), and
+- For tool-workflow skills, each "request" is the first message from the customer or operator the agent
+  serves, in the language the skill uses. The conversation can continue: a simulated customer answers
+  the agent's questions (confirmations, choices, missing data). The agent works through the skill's tools (mocked), and
   "verifiableOutcome" is checked on the final data, the tool calls that changed it, and the reply.
 
 <skill>

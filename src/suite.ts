@@ -77,6 +77,7 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
       timeoutSec: 900,
       keepWorkspaces: false,
       extraArgs: [],
+      customer: { model: o.generatorModel, isolate: o.isolate },
     });
     const records = await readResults(path.join(outDir, "results.jsonl"));
     Object.assign(perTask, summarize(records).skills[0]?.perTask ?? {});

@@ -37,7 +37,12 @@ const PROMPT = (task: TaskSpec, repo: string, hidden: string, mustChange: string
 An agent receives the REQUEST and the REPO. It never sees the HIDDEN tests, which grade its work.${mock ? `
 It can call the mock TOOLS below: it sees their names, descriptions, input schemas and what they return,
 but not their code or the raw data file. Hidden tests read the final data, the calls made and the
-agent's final reply from .skillarena-run/.` : ""}
+agent's messages from .skillarena-run/.` : ""}${task.customer ? `
+A simulated customer answers the agent's questions, playing only this persona:
+<persona>
+${task.customer.persona.trim()}
+</persona>
+A test that needs information the persona doesn't have, or that depends on the number of turns, is unfair.` : ""}
 A task is fair only if a careful, competent engineer could pass every hidden test using only the
 request and what the repo states (README, doc comments, existing tests, existing code behaviour).
 
