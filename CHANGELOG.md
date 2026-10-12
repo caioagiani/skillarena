@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/caioagiani/skillarena/compare/v0.5.0...v0.6.0) (2026-10-12)
+
+
+### Features
+
+* generate, review and calibrate tasks for each skill automatically ([#14](https://github.com/caioagiani/skillarena/issues/14)) ([88badd1](https://github.com/caioagiani/skillarena/commit/88badd1816de077ac7e3311aa9b32848d858d299))
+
 ## [0.5.0](https://github.com/caioagiani/skillarena/compare/v0.4.2...v0.5.0) (2026-10-12)
 
 
