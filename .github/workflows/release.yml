@@ -1,0 +1,41 @@
+name: Release
+
+# Conventional commits on main → release-please keeps a release PR open (version bump + CHANGELOG).
+# Merging that PR tags the release and publishes to npm via trusted publishing (OIDC, no token, with provenance).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # A PAT makes release commits/PRs authored by the maintainer and lets CI run on the release PR.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+      - uses: actions/setup-node@v4
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Publish to npm
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          npm install -g npm@latest
+          npm ci
+          npm test
+          node dist/cli.js validate
+          npm publish --provenance --access public

@@ -31,6 +31,21 @@ Adapters live in [`src/agents/`](src/agents/). Implement `preflight`, `prepareWo
 agent discovers skills) and `run` (headless execution and transcript parsing), then add a parser
 test to `test/unit.test.js`.
 
+## Commits and releases
+
+Commits (and PR titles, since PRs are squash-merged) follow [Conventional Commits](https://www.conventionalcommits.org).
+They decide the next version automatically:
+
+| Commit | Release |
+|---|---|
+| `fix: …` | patch |
+| `feat: …` | minor |
+| `feat!: …` or a `BREAKING CHANGE:` footer | major (minor while < 1.0) |
+| `docs:` `chore:` `ci:` `test:` `refactor:` | no release |
+
+[release-please](https://github.com/googleapis/release-please) keeps a release PR open with the version bump
+and CHANGELOG. Merging it tags the release and publishes to npm with provenance.
+
 ## Development
 
 ```bash
