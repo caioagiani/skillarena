@@ -10,6 +10,7 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  packages: write
 
 jobs:
   release:
@@ -39,3 +40,12 @@ jobs:
           npm test
           node dist/cli.js validate
           npm publish --provenance --access public
+      - name: Publish to GitHub Packages
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GitHub Packages requires a scoped name; the repository field links it to this repo.
+          npm pkg set name=@caioagiani/skillarena
+          npm config set //npm.pkg.github.com/:_authToken "$NODE_AUTH_TOKEN"
+          npm publish --registry https://npm.pkg.github.com
