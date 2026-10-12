@@ -99,6 +99,7 @@ test("detects install type from files", () => {
 test("splits agent args", async () => {
   const { splitArgs } = await import("../dist/util.js");
   assert.deepEqual(splitArgs(`--autocompact 100000 --append-system-prompt "be brief" -x 'a b'`), ["--autocompact", "100000", "--append-system-prompt", "be brief", "-x", "a b"]);
+  assert.deepEqual(splitArgs(`-c 'model_catalog_json="/a b/c.json"' --x="1 2" a\\ b ""`), ["-c", 'model_catalog_json="/a b/c.json"', "--x=1 2", "a b", ""]);
 });
 
 test("stats", () => {

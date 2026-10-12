@@ -96,11 +96,35 @@ export async function pool<T>(items: T[], limit: number, fn: (item: T, i: number
 }
 
 /** Split a command-line string into arguments, honouring single and double quotes. */
+/** Split a flag string like a POSIX shell: quotes group (and are removed), anywhere in a word. */
 export function splitArgs(s: string): string[] {
   const out: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s))) out.push(m[1] ?? m[2] ?? m[3]);
+  let cur = "";
+  let inWord = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else if (ch === "\\" && quote === '"' && (s[i + 1] === '"' || s[i + 1] === "\\")) cur += s[++i];
+      else cur += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      inWord = true;
+    } else if (ch === "\\" && i + 1 < s.length) {
+      cur += s[++i];
+      inWord = true;
+    } else if (/\s/.test(ch)) {
+      if (inWord) out.push(cur);
+      cur = "";
+      inWord = false;
+    } else {
+      cur += ch;
+      inWord = true;
+    }
+  }
+  if (quote) throw new Error(`Unterminated ${quote} in --agent-args`);
+  if (inWord) out.push(cur);
   return out;
 }
 
