@@ -53,13 +53,24 @@ interface Calibration {
  * again with the failed attempts as evidence (repaired or dropped when unfair); tasks it always
  * solves are made harder.
  */
-async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string, o: SuiteOptions, baseline: ResolvedSkill): Promise<Calibration> {
+async function calibrate(
+  key: string,
+  analysis: SkillAnalysis,
+  tasksDir: string,
+  o: SuiteOptions,
+  baseline: ResolvedSkill,
+  skill: ResolvedSkill,
+): Promise<Calibration> {
+  // Workflow tasks are also tried with the skill: a task that fails every competent attempt, whichever
+  // condition made it, gets the evidence-based review. Hardening still looks at the bare agent only.
+  const conditions = analysis.domain === "tool-workflow" ? [baseline, skill] : [baseline];
   const tag = `${o.agent.id}-${(o.model ?? "default").replace(/[^\w.-]/g, "_")}`;
   const file = path.join(generatedDir(key), `calibration-${tag}.json`);
   if (!o.refresh && existsSync(file)) return JSON.parse(await readFile(file, "utf8"));
   const gen = { model: o.generatorModel, isolate: o.isolate, count: o.count, builtinTasksDir: o.builtinTasksDir };
   const runDir = (label: string) => path.join(generatedDir(key), `calibration-${tag}-${label}`);
   const perTask: Record<string, number> = {};
+  const neverAny: Record<string, boolean> = {};
   const hardened = new Set<string>();
 
   const measure = async (ids: string[], label: string) => {
@@ -71,7 +82,7 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
       outDir,
       agent: o.agent,
       model: o.model,
-      skills: [baseline],
+      skills: conditions,
       tasks,
       trials: CALIBRATION_TRIALS,
       concurrency: o.concurrency,
@@ -82,19 +93,24 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
       customer: { model: o.generatorModel, isolate: o.isolate },
     });
     const records = await readResults(path.join(outDir, "results.jsonl"));
-    Object.assign(perTask, summarize(records).skills[0]?.perTask ?? {});
+    const summary = summarize(records).skills;
+    Object.assign(perTask, summary.find((s) => s.skill === baseline.id)?.perTask ?? {});
+    for (const id of ids) {
+      const rates = summary.map((s) => s.perTask[id]).filter((v) => v != null);
+      neverAny[id] = rates.some((v) => v === 0);
+    }
     return records;
   };
 
   /** Measure, then give tasks nobody passes a second, evidence-based fairness review. */
   const settle = async (ids: string[], label: string) => {
     const records = await measure(ids, label);
-    const never = ids.filter((id) => perTask[id] === 0);
+    const never = ids.filter((id) => neverAny[id]);
     if (!never.length) return;
     const all = await loadTasks(tasksDir);
     const unfair: { id: string; issues: { test: string; reason: string }[] }[] = [];
     await pool(never, 4, async (id) => {
-      const failed = records.filter((r) => r.task === id && !r.error);
+      const failed = records.filter((r) => r.task === id && !r.error && !r.pass);
       if (!failed.length) return;
       const a = await auditTask(all.find((t) => t.id === id)!, {
         model: o.generatorModel,
@@ -109,7 +125,7 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
       if (a && !a.fair) unfair.push({ id, issues: a.issues });
     });
     if (!unfair.length) return;
-    log.info(dim(`  ${unfair.length} task(s) the bare agent never solved look unfair after seeing its attempts; repairing…`));
+    log.info(dim(`  ${unfair.length} task(s) no attempt solved look unfair after seeing the attempts; repairing…`));
     const fixed = await repairTasks(key, analysis, unfair, gen, fairness(o, analysis));
     for (const { id } of unfair.filter((x) => !fixed.includes(x.id))) {
       await rm(path.join(tasksDir, id), { recursive: true, force: true });
@@ -191,7 +207,7 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
       continue;
     }
     if (o.calibrate) {
-      const cal = await calibrate(key, analysis, dir, o, baseline);
+      const cal = await calibrate(key, analysis, dir, o, baseline, skill);
       const fresh = await loadTasks(dir);
       const width = Math.max(...fresh.map((t) => t.id.length)) + 2;
       for (const t of fresh) {

@@ -218,8 +218,9 @@ what it checked and what it never had to think about, and aim the new requiremen
 ` : ""}
 Make it substantially harder, in place (same folder and id), following FORMAT.md: add interacting
 requirements, more edge cases written into the docs, extra bugs in the existing code that the
-request invites the agent to find, performance limits, or (workflow tasks) tricky records in the data
-and policy rules that interact. Keep every requirement explicitly written down
+request invites the agent to find, performance limits, or (workflow tasks) a harder world: more records, near-misses, several
+items to handle, amounts or dates to compute. For workflow tasks NEVER add, change or make exceptions
+to the rules in repo/ docs or tools.json "rules": the rules stay as they are, only the situation gets harder. Keep every requirement explicitly written down
 and fair, and keep any scope limit in the request consistent with the hidden tests. Update hidden/ and solution/.
 
 Run \`node check.mjs tasks/${id}\` after each change until it prints "fixture: fails (good)" and

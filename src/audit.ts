@@ -43,8 +43,9 @@ A simulated customer answers the agent's questions, playing only this persona:
 ${task.customer.persona.trim()}
 </persona>
 A test that needs information the persona doesn't have, or that depends on the number of turns, is unfair.` : ""}${rules?.length ? `
-The real deployment imposes these business rules. A test that an agent following them exactly would
-fail (because the task's docs or tests contradict them) is unfair:
+The real deployment imposes these business rules. The task is unfair if its docs contradict, override
+or add exceptions to any of them (e.g. "this replaces the permission to..."), or if a test would fail an
+agent that follows them exactly. Report such a doc rule as an issue with test "docs":
 ${rules.map((r) => `- ${r}`).join("\n")}` : ""}
 A task is fair only if a careful, competent engineer could pass every hidden test using only the
 request and what the repo states (README, doc comments, existing tests, existing code behaviour).

@@ -276,9 +276,10 @@ on the right prompts and does the specific thing it promises, which a general ta
   Claude Code and OpenCode have graded runs.
 - **No container sandbox.** Trials run in temp directories with permissions bypassed. Use CI or a VM.
 - **Workflow tasks are beta.** On a company-specific support skill (strict scripts, its own business
-  rules) generated tasks still graded the skill for diverging from the policy the generator wrote,
-  so it scored far below the bare agent for reasons that weren't the skill's fault. Read the
-  transcripts before trusting a workflow result. For such skills, hand-written tasks are safer.
+  rules), early versions graded the skill for diverging from rules the generator invented. Policies now
+  follow the skill's rules, hardening never changes rules, and tasks no attempt solves are re-reviewed
+  with both conditions' attempts. The remaining gap is strict reply-format checks. Read the transcripts
+  before trusting a workflow result.
 - **The simulated customer is a model.** It only knows its persona and answers what it is asked, but
   it is not a real person. Workflow tasks need Claude Code as the agent (mock tools over MCP and
   session resume).
