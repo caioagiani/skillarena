@@ -152,6 +152,7 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     tasks: tasks.map((t) => ({ id: t.id, kind: t.kind })),
   });
 
+  await agent.setup?.();
   log.info(`${bold(String(skills.length * tasks.length * trials))} trials: ${skills.map((s) => s.id).join(", ")} × ${tasks.length} tasks × ${trials} → ${dim(outDir)}`);
   await runBench({
     runId,

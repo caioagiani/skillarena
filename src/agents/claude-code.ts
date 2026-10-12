@@ -1,9 +1,10 @@
 import { createWriteStream } from "node:fs";
+import { cp } from "node:fs/promises";
 import path from "node:path";
 import { hasClaudeAuth } from "../config.js";
 import { claudeCodeProviderEnv, type Provider } from "../providers.js";
 import type { Agent, AgentRunInput, AgentRunResult, ResolvedSkill } from "../types.js";
-import { exec, which } from "../util.js";
+import { exec, log, tmpDir, which } from "../util.js";
 import { installSkill } from "./install.js";
 
 export interface ClaudeCodeOptions {
@@ -20,6 +21,9 @@ export interface ClaudeCodeOptions {
  */
 export function claudeCode(opts: ClaudeCodeOptions): Agent {
   const thirdParty = Boolean(opts.baseUrl || (opts.provider && opts.provider.id !== "anthropic"));
+  let template: string | null = null;
+  const providerEnv = () =>
+    thirdParty ? claudeCodeProviderEnv(opts.provider ?? { id: "custom", keyEnv: "ANTHROPIC_AUTH_TOKEN" }, opts.model!, opts.baseUrl) : {};
   return {
     id: "claude-code",
 
@@ -31,6 +35,21 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       } else if (opts.isolate && !hasClaudeAuth()) {
         throw new Error("Not logged in. Run `npx skillarena login` (uses your Claude subscription), or set ANTHROPIC_API_KEY.");
       }
+    },
+
+    /**
+     * A brand-new config dir hasn't fetched Claude Code's remote config yet, so the first session
+     * runs without things a real install has (builtin plugins only appear from the second session).
+     * Warm one clean template with a tiny session and copy it into every trial.
+     */
+    async setup() {
+      if (!opts.isolate) return;
+      template = await tmpDir("cfg-template");
+      const cwd = await tmpDir("warmup");
+      const env = { ...process.env, DISABLE_AUTOUPDATER: "1", CLAUDE_CONFIG_DIR: template, ...providerEnv() };
+      const model = thirdParty ? opts.model! : "haiku";
+      const r = await exec("claude", ["-p", "Reply with: ok", "--model", model, "--no-session-persistence", "--output-format", "json"], { cwd, env, timeoutSec: 180 });
+      if (r.code !== 0) log.warn(`config warm-up failed (exit ${r.code}); trials start from a cold config`);
     },
 
     prepareWorkspace(workspace: string, skill: ResolvedSkill) {
@@ -59,8 +78,14 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       }
 
       const env: NodeJS.ProcessEnv = { ...process.env, DISABLE_AUTOUPDATER: "1" };
-      if (opts.isolate) env.CLAUDE_CONFIG_DIR = input.configDir;
-      if (thirdParty) Object.assign(env, claudeCodeProviderEnv(opts.provider ?? { id: "custom", keyEnv: "ANTHROPIC_AUTH_TOKEN" }, opts.model!, opts.baseUrl));
+      if (opts.isolate) {
+        env.CLAUDE_CONFIG_DIR = input.configDir;
+        if (template) {
+          const skip = new Set(["projects", "sessions", "backups", "file-history", "todos", "shell-snapshots"]);
+          await cp(template, input.configDir, { recursive: true, filter: (f) => !skip.has(path.relative(template!, f).split(path.sep)[0]) });
+        }
+      }
+      Object.assign(env, providerEnv());
 
       const transcript = createWriteStream(input.transcriptPath);
       const r = await exec("claude", args, {

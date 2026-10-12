@@ -84,6 +84,8 @@ export interface Agent {
   id: string;
   /** Throws with a helpful message when the agent can't run. */
   preflight(): Promise<void>;
+  /** Optional one-time setup before any trial (e.g. warming a clean config template). */
+  setup?(): Promise<void>;
   prepareWorkspace(workspace: string, skill: ResolvedSkill): Promise<void>;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
