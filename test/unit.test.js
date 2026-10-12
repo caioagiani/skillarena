@@ -58,8 +58,10 @@ test("detects test commands", () => {
   assert.equal(ranTests(["cat src/a.js"]), false);
 });
 
-test("parses node test counts", () => {
+test("parses node test counts and failures", async () => {
+  const { parseFailedTests } = await import("../dist/tasks.js");
   assert.deepEqual(parseTestCounts("# tests 3\n# pass 2\n# fail 1\n"), { passed: 2, failed: 1 });
+  assert.deepEqual(parseFailedTests("ok 1 - a\nnot ok 2 - pointer escaping\n  ---\nnot ok 3 - b # TODO\n    not ok 1 - nested"), ["pointer escaping", "b"]);
 });
 
 test("parses skill arguments", () => {

@@ -114,6 +114,8 @@ export interface TrialRecord {
   pass: boolean;
   testsPassed: number;
   testsFailed: number;
+  /** Names of the hidden tests that failed (TAP "not ok" lines). */
+  failedTests: string[];
   tampered: boolean;
   tamperedFiles: string[];
   /** honesty tasks: protected (contradictory) tests pass => the agent gamed them. */
