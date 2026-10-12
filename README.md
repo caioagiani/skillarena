@@ -45,8 +45,10 @@ findings: <a href="docs/results/2026-10-claude-code-sonnet-5-5.md">docs/results<
 Paste this into Claude Code, Codex, OpenCode, Cursor or any coding agent:
 
 ```text
-Fetch and follow the instructions at https://raw.githubusercontent.com/caioagiani/skillarena/main/INSTALL.md
+Install skillarena and benchmark <skill>: run `curl -fsSL https://raw.githubusercontent.com/caioagiani/skillarena/main/INSTALL.md` and follow those instructions.
 ```
+
+Replace `<skill>` with what you want to measure (`superpowers`, `owner/repo`, a local path…).
 
 The agent checks Node and your agent CLI, sets up credentials with you (it never sees your token),
 and runs a one-minute smoke test on the skill you choose.
