@@ -97,9 +97,14 @@ an agent that ignores the skill but does excellent work must pass.
 Keep it compact (a few small files). Write it, then run \`node check.mjs tasks/${id}\` and fix it until it
 prints "fixture: fails (good)" and "solution: passes (good)".`;
 
-const HARDEN_PROMPT = (id: string) => `The benchmark task in tasks/${id}/ was solved by a strong baseline agent on every attempt,
-so it can't show any difference between agents.
-
+const HARDEN_PROMPT = (id: string, round: number, transcripts: string[]) => `The benchmark task in tasks/${id}/ was solved by a strong baseline agent on every attempt,
+so it can't show any difference between agents.${round > 1 ? `
+It was already made harder ${round - 1} time(s) and the agent still solved it every time. Small additions are not
+enough: scale it up (more files, more interacting rules, a larger spec, bugs that only show up in combination).` : ""}
+${transcripts.length ? `
+How the agent solved it is in ${transcripts.join(", ")} (stream-json transcripts). Read them first: see
+what it checked and what it never had to think about, and aim the new requirements there.
+` : ""}
 Make it substantially harder, in place (same folder and id), following FORMAT.md: add interacting
 requirements, more edge cases written into the README/doc comments, extra bugs in the existing code that the
 request invites the agent to find, or performance limits. Keep every requirement explicitly written down
@@ -157,7 +162,7 @@ async function cleanup(): Promise<void> {
 
 /** Run one generator agent per task in its own workdir, in parallel. Returns the finished task folders. */
 async function fanOut(
-  jobs: { id: string; prompt: string; seed?: string }[],
+  jobs: { id: string; prompt: string; seed?: string; attach?: string[] }[],
   analysis: SkillAnalysis,
   opts: GenerateOptions,
   logFile: string,
@@ -167,6 +172,7 @@ async function fanOut(
     const work = await prepareWorkdir(analysis, opts);
     scratch.push(work);
     if (job.seed) await cp(job.seed, path.join(work, "tasks", job.id), { recursive: true });
+    for (const f of job.attach ?? []) await cp(f, path.join(work, "baseline", path.basename(f)));
     await runGenerator(work, job.prompt, { ...opts, timeoutSec: opts.timeoutSec ?? 1500 }, logFile);
     const dir = path.join(work, "tasks", job.id);
     if (existsSync(path.join(dir, "task.yaml"))) out.set(job.id, dir);
@@ -230,7 +236,7 @@ async function install(t: TaskSpec, dest: string): Promise<TaskSpec> {
   return { ...t, id, dir: path.join(dest, id) };
 }
 
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36).replace(/^-+|-+$/g, "");
 
 /** Generate (or load cached) validated, reviewed tasks for a skill. Returns the folder that holds them. */
 export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis, opts: GenerateOptions & { refresh?: boolean }, accept: Accept): Promise<string> {
@@ -258,11 +264,26 @@ export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis,
 }
 
 /** Rewrite tasks the baseline always solves. The old version stays unless the new one is valid and accepted. */
-export async function hardenTasks(key: string, analysis: SkillAnalysis, ids: string[], opts: GenerateOptions, accept: Accept): Promise<string[]> {
+export async function hardenTasks(
+  key: string,
+  analysis: SkillAnalysis,
+  ids: string[],
+  opts: GenerateOptions,
+  accept: Accept,
+  evidence: { round: number; transcriptsDir?: string },
+): Promise<string[]> {
   const dest = path.join(generatedDir(key), "tasks");
   const logFile = path.join(generatedDir(key), "generator.jsonl");
-  log.info(dim(`  making ${ids.length} task(s) harder…`));
-  const dirs = await fanOut(ids.map((id) => ({ id, prompt: HARDEN_PROMPT(id), seed: path.join(dest, id) })), analysis, opts, logFile);
+  const transcripts = async (id: string) => {
+    const dir = evidence.transcriptsDir;
+    if (!dir || !existsSync(dir)) return [];
+    return (await readdir(dir)).filter((f) => f.includes(`__${id}__`)).slice(0, 2).map((f) => path.join(dir, f));
+  };
+  const jobs = await Promise.all(ids.map(async (id) => {
+    const attach = await transcripts(id);
+    return { id, prompt: HARDEN_PROMPT(id, evidence.round, attach.map((f) => `baseline/${path.basename(f)}`)), seed: path.join(dest, id), attach };
+  }));
+  const dirs = await fanOut(jobs, analysis, opts, logFile);
   const { good } = await review(dirs, analysis, opts, accept, logFile);
   for (const t of good) await install(t, dest);
   await cleanup();

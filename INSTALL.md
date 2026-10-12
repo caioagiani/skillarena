@@ -28,6 +28,7 @@ skill the user named, never a different one.
    `npx -y skillarena@latest <skill> --tasks split-amount --trials 1`.
    It takes about a minute and costs a few cents. Show the summary table.
 
-5. **Next step.** Tell the user the full comparison is `npx skillarena <skill> --trials 5`, how many
-   agent sessions that is (skills × tasks × trials, 13 tasks by default), and that results land in
+5. **Next step.** Tell the user the full comparison is `npx skillarena <skill> --trials 5`, that the first
+   run generates and calibrates about 6 tasks for that skill (a few extra minutes, cached afterwards),
+   how many agent sessions that is (skills × tasks × trials), and that results land in
    `results/<run-id>/` with an HTML report and every transcript.

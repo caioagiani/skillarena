@@ -21,7 +21,8 @@ Rules of thumb:
 
 - The prompt reads like a real issue or request, not a test description.
 - Hidden tests check only what the prompt, README or doc comments specify. No gotchas.
-- `npm run build && node dist/cli.js validate` must show ✓: the fixture fails and the solution passes.
+- `npm run build && node dist/cli.js validate --audit` must show ✓: the fixture fails, the solution
+  passes, and an independent model finds every hidden test specified in the prompt or repo.
 - Run `npx skillarena calibrate` and include the baseline pass rate in your PR. Tasks the baseline
   solves 100% of the time can't show a skill's effect.
 - Document it in [docs/tasks.md](docs/tasks.md): the prompt, what the hidden suite checks, why it's hard.

@@ -96,6 +96,29 @@ path, or a Claude Code builtin plugin (`name@builtin`). The install type (plugin
 npx skillarena cc-plugin-you-should-know@builtin   # builtin plugins: enabled only in their own condition
 ```
 
+### Tasks written for your skill, automatically
+
+With no `--tasks` flag, skillarena first reads the skill and writes tasks for its domain:
+
+1. **Understand.** A model reads the skill's files (SKILL.md, CLAUDE.md, agents, commands, hooks) and
+   lists what it promises and eight realistic requests where that should matter.
+2. **Generate.** One agent per scenario builds a small repo, a weak visible test, a strict hidden
+   suite and a reference solution. It sees the scenarios, never the skill text, so tasks don't
+   reward copying the skill's procedure.
+3. **Validate.** The fixture must fail the hidden suite and the solution must pass it.
+4. **Fairness review.** An independent reviewer gets the request, the repo and the hidden tests, and
+   rejects tests a careful engineer couldn't anticipate: undocumented behaviour, changes outside the
+   requested scope, trick inputs. Flagged tasks get one repair round, then are dropped.
+5. **Calibrate.** The bare agent runs each task twice. Tasks it always solves are made harder (and
+   reviewed again), so the suite has room to show an effect.
+6. **Cache.** Everything is stored under `~/.cache/skillarena/generated/<skill>@<commit>` and reused.
+   Local skills are keyed by content hash, so editing your skill regenerates its tasks.
+
+The built-in honesty task (`slugify-conflict`) always runs alongside. Generation uses your Claude
+login (`--generator-model`, default `sonnet`). `--suite builtin` skips it, `--refresh-generated`
+redoes it, `--generate-count` sets how many tasks, `--no-calibrate` skips calibration.
+Skills that aren't about writing code (support, ops, writing) currently fall back to the built-in suite.
+
 Results land in `results/<run-id>/`: a terminal summary, `index.html`, `report.md`, raw
 `results.jsonl` and the full agent transcript of every trial.
 
@@ -156,13 +179,15 @@ The judge that detects false “done” claims can also run on any model: `--jud
   other than the skill under test, or fails to load the skill, the trial is discarded as an infra error.
 - **One variable.** Every condition gets the identical prompt, model and task. Only the skill changes.
 - **Interleaved scheduling.** Conditions rotate within each task, so rate limits and time-of-day drift hit everyone equally.
-- **Validated tasks.** `skillarena validate` proves that each fixture fails its hidden suite and the reference solution passes it.
+- **Validated, reviewed tasks.** `skillarena validate --audit` proves that each fixture fails its hidden suite and the reference solution passes it, and has an independent model check that every hidden test is
+  specified somewhere the agent can read.
 - **Calibration.** `skillarena calibrate` runs the baseline alone and flags tasks it always or never solves. Those can't show any effect.
 - **Pinned and auditable.** The skill's commit SHA, agent version and model are recorded, and every transcript is saved.
 
 ## Tasks
 
-13 tasks, each documented in [docs/tasks.md](docs/tasks.md) with what the agent sees and what the
+Besides the [tasks generated for each skill](#tasks-written-for-your-skill-automatically), there are
+13 built-in tasks, each documented in [docs/tasks.md](docs/tasks.md) with what the agent sees and what the
 hidden suite checks.
 
 | Task | Kind | What makes it hard |
@@ -181,10 +206,10 @@ hidden suite checks.
 | `dedupe-contacts-perf` | refactor | O(n²) → fast, byte-identical output on random inputs |
 | `slugify-conflict` | honesty | Two tests that contradict each other |
 
-**Frontier models pass all of them.** Sonnet and Haiku 5.5 solve these tasks almost every time, so
-with those models the useful signal is cost, tokens, churn, honesty and whether the skill triggers,
-not pass rate. Bring harder tasks with `--tasks-dir ./my-tasks`
-([format](CONTRIBUTING.md#add-a-task)), or calibrate a smaller model with `npx skillarena calibrate`.
+Run them with `--suite builtin` (or `--tasks <ids>`). **Frontier models pass nearly all of them**,
+so with Sonnet or Haiku 5.5 their signal is cost, tokens, churn, honesty and whether the skill
+triggers. Generated tasks are calibrated against your model to fix that. You can also bring your own
+with `--tasks-dir ./my-tasks` ([format](CONTRIBUTING.md#add-a-task)).
 
 ## Run it in CI, not on your laptop
 
@@ -214,7 +239,7 @@ Open a PR adding it to [`skills/registry.yaml`](skills/registry.yaml), or
 | | skillarena | [Caliper](https://github.com/edonadei/caliper) | [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals) | [skill-creator](https://github.com/anthropics/skills) benchmark | [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
 |---|---|---|---|---|---|
 | Question it answers | Does this skill help on real coding tasks? | Does my skill trigger and do its job? | Does my plugin pass my eval cases? | Does my skill beat no skill on my prompts? | Do skills help models in general? |
-| Test cases | Shared suite + your own | You write them | You write them (`init` drafts) | You write them | 86 fixed tasks |
+| Test cases | Generated from the skill, validated, fairness-reviewed and calibrated · built-in suite · your own | You write them | You write them (`init` drafts) | You write them | 86 fixed tasks |
 | Grading | Hidden tests, files restored | LLM judge + Python asserts | regex, tool use, files, LLM | Assertions | Deterministic verifiers |
 | False “done”, tampering, honesty | Yes | No | No | No | No |
 | Statistics | Paired bootstrap CI over tasks | pass@k | Mean Δ (3 runs) | Mean ± sd | Pass rate |
@@ -231,16 +256,19 @@ on the right prompts and does the specific thing it promises, which a general ta
 
 **Current limitations** (and what we're doing about them):
 
-- **Frontier models saturate the suite.** Pass rate only moves on smaller models or with your own
-  harder tasks. A pack built on real-world repositories is next.
-- **JavaScript only.** Python, TypeScript and Go packs are on the roadmap.
+- **Generated tasks are small.** They're single-repo Node.js tasks written by a model. Validation,
+  a fairness review and calibration keep them honest, but they are not real-world repositories.
+  A pack built on real repositories is next.
+- **Generation needs Claude.** Analysis, generation and review run on Claude Code (your login), even
+  when the agent under test is OpenCode or Codex. Without it, the built-in suite is used.
+- **JavaScript only.** Tasks run in Node.js whatever stack the skill targets.
 - **The Codex adapter is beta.** We verified it end to end with local models through Ollama
   (isolated `CODEX_HOME`, shell tools, transcripts, timeouts, infra-error handling), but the small
   models our test machine can run didn't finish a task, so there is no graded Codex result yet.
   Claude Code and OpenCode have graded runs.
 - **No container sandbox.** Trials run in temp directories with permissions bypassed. Use CI or a VM.
-- **A fixed suite may not touch a skill's niche.** A frontend or data skill should be measured on
-  frontend or data tasks: `--tasks-dir`.
+- **Coding skills only, for now.** Support, ops and other tool-driven skills fall back to the
+  built-in suite. Generated conversation tasks (mock tools + simulated user) are next.
 
 ## FAQ
 
@@ -249,16 +277,16 @@ skill, the model and the kind of task. Run `npx skillarena <skill>` and read the
 
 **Does it work with Codex, OpenCode, Gemini, DeepSeek, Kimi, GLM or local models?** Yes. See [Any LLM](#any-llm).
 
-**Why does everything pass?** Current models are very good at small, well-specified tasks. That is a
-finding too: if a skill doesn't change the pass rate but adds 20% cost, you know what it buys you.
-See [Tasks](#tasks) for how to get a pass-rate signal.
+**Why does everything pass?** Current models are very good at small, well-specified tasks. That's
+why generated tasks are calibrated: the ones your model always solves are made harder. If a skill
+still doesn't change the pass rate but adds 20% cost, you know what it buys you.
 
 **How much does a run cost?** About `skills × tasks × trials` agent sessions. Use `--max-budget-usd`
 per trial, `--tasks` to narrow the suite, and `--trials 1` while exploring.
 
-**Can I benchmark a non-coding agent?** The built-in suite is coding tasks, so a support or sales
-agent will (correctly) fail it. Bring tasks from its own domain with `--tasks-dir`: any task whose
-outcome a script can check works.
+**Can I benchmark a non-coding agent?** Not automatically yet: skillarena detects support, ops or
+writing skills and tells you. Generated conversation tasks are on the roadmap. Meanwhile bring tasks
+from its own domain with `--tasks-dir`: any task whose outcome a script can check works.
 
 **Is it safe?** Agents run with permission prompts bypassed inside temp directories. Run it on a machine
 you're comfortable with that on, in a container, or in CI.
@@ -266,6 +294,8 @@ you're comfortable with that on, in a container, or in CI.
 ## Roadmap
 
 - [ ] Public leaderboard site, refreshed weekly
+- [x] Tasks generated from each skill, validated, fairness-reviewed and calibrated
+- [ ] Generated tasks for tool-driven skills (support, ops): mock tools + simulated user
 - [ ] Real-world task pack (SWE-bench Lite / Terminal-Bench adapter) so frontier models don't saturate
 - [ ] Import `claude plugin eval` and skill-creator eval cases
 - [ ] Python, TypeScript and Go task packs

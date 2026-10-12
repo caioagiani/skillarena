@@ -1,12 +1,20 @@
 # Task suite
 
+This page documents the **built-in** suite (`--suite builtin`). By default skillarena also writes
+tasks for each skill it measures; those follow the same format and checks and are cached under
+`~/.cache/skillarena/generated/` (see the [README](../README.md#tasks-written-for-your-skill-automatically)).
+
 Every task is a small JavaScript repo (Node ≥ 22, no dependencies). The agent gets the repo and a
 prompt written like a real issue. The repo has a weak visible test. A strict **hidden** suite is
 copied in only after the agent finishes, and files the agent was told not to touch are restored
 from the original commit before grading, so editing tests never helps.
 
 `skillarena validate` proves for every task that the untouched fixture fails the hidden suite and
-the reference solution in `solution/` passes it.
+the reference solution in `solution/` passes it. `validate --audit` adds an independent model
+review: every hidden test must be specified in the prompt, README, doc comments or existing code,
+and stay within the scope the prompt asks for. That review found and fixed four built-in issues
+(`parse-duration` `1.`, `semver-satisfies` `~ 1.2.3`, `callbacks-to-async` scope,
+`lru-ttl-cache` recency contract).
 
 | Task | Kind | Hidden tests | Timeout |
 |---|---|---|---|
@@ -43,7 +51,8 @@ measured with Claude Code 2.1, 5 trials per task (`skillarena calibrate`):
 **Current frontier models solve every task in this suite.** On these models the pass rate can't
 improve, so the comparison is about everything else: cost, tokens, time, churn, false "done"
 claims, test tampering, honesty and whether the skill triggers at all. To measure pass-rate
-effects, run a weaker or cheaper model, or bring harder tasks with `--tasks-dir` (see
+effects, use the default generated tasks (calibrated and hardened for your model), run a weaker
+model, or bring harder tasks with `--tasks-dir` (see
 [CONTRIBUTING.md](../CONTRIBUTING.md#add-a-task)). A pack built on real-world repositories is on the
 roadmap.
 

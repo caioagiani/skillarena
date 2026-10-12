@@ -38,6 +38,8 @@ const fairness = (o: SuiteOptions): Accept => async (t) => {
 const ALWAYS = ["slugify-conflict"];
 
 const CALIBRATION_TRIALS = 2;
+/** Rounds of "make it harder" for tasks the baseline always solves. */
+const HARDEN_ROUNDS = 2;
 
 interface Calibration {
   perTask: Record<string, number>;
@@ -71,23 +73,24 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
   };
 
   log.info(dim(`  calibrating on the bare agent (${CALIBRATION_TRIALS} trials per task)…`));
-  let tasks = await loadTasks(tasksDir);
-  const perTask = await measure(tasks, 1);
-  const tooEasy = Object.entries(perTask).filter(([, v]) => v >= 1).map(([id]) => id);
-  let hardened: string[] = [];
-  if (tooEasy.length) {
-    hardened = await hardenTasks(key, analysis, tooEasy, {
+  const perTask = await measure(await loadTasks(tasksDir), 1);
+  const hardened = new Set<string>();
+  for (let round = 1; round <= HARDEN_ROUNDS; round++) {
+    const tooEasy = Object.entries(perTask).filter(([, v]) => v >= 1).map(([id]) => id);
+    if (!tooEasy.length) break;
+    log.info(dim(`  round ${round}: the bare agent always solved ${tooEasy.length} task(s); making them harder…`));
+    const done = await hardenTasks(key, analysis, tooEasy, {
       model: o.generatorModel,
       isolate: o.isolate,
       count: o.count,
       builtinTasksDir: o.builtinTasksDir,
-    }, fairness(o));
-    if (hardened.length) {
-      tasks = (await loadTasks(tasksDir)).filter((t) => hardened.includes(t.id));
-      Object.assign(perTask, await measure(tasks, 2));
-    }
+    }, fairness(o), { round, transcriptsDir: path.join(generatedDir(key), `calibration-${tag}-r${round}`, "transcripts") });
+    if (!done.length) break;
+    done.forEach((id) => hardened.add(id));
+    const tasks = (await loadTasks(tasksDir)).filter((t) => done.includes(t.id));
+    Object.assign(perTask, await measure(tasks, round + 1));
   }
-  const cal = { perTask, hardened };
+  const cal = { perTask, hardened: [...hardened] };
   await writeFile(file, JSON.stringify(cal, null, 2));
   return cal;
 }
@@ -138,10 +141,11 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
     if (o.calibrate) {
       const cal = await calibrate(key, analysis, dir, o, baseline);
       const fresh = await loadTasks(dir);
+      const width = Math.max(...fresh.map((t) => t.id.length)) + 2;
       for (const t of fresh) {
         const v = cal.perTask[t.id];
         const label = v == null ? dim("not calibrated") : v >= 1 ? yellow("baseline always passes") : v <= 0 ? yellow("baseline never passes") : green("discriminates");
-        log.info(`  ${t.id.padEnd(34)} ${v == null ? "  — " : `${Math.round(v * 100)}%`.padStart(4)}  ${label}${cal.hardened.includes(t.id) ? dim(" (hardened)") : ""}`);
+        log.info(`  ${t.id.padEnd(width)} ${v == null ? "  — " : `${Math.round(v * 100)}%`.padStart(4)}  ${label}${cal.hardened.includes(t.id) ? dim(" (hardened)") : ""}`);
       }
       generated.push(...fresh);
     } else generated.push(...tasks);
