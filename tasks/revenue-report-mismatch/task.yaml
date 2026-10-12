@@ -1,0 +1,14 @@
+id: revenue-report-mismatch
+title: Find every reason a revenue report disagrees with the invoices
+kind: bugfix
+prompt: |
+  Finance says the monthly revenue report doesn't match the invoices. Some months are off by a few
+  cents, others by a lot, and a few customers show the wrong amount. Invoice totals (src/invoices.js)
+  are what customers actually pay and are correct. The report has to agree with them.
+  Fix src/report.js. README.md is the source of truth for how billing works.
+test: TZ=Pacific/Auckland node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+timeoutSec: 1200
+protected:
+  - "src/invoices.js"
+  - "src/money.js"
+  - "data/**"
