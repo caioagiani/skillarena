@@ -32,11 +32,11 @@ measured with Claude Code 2.1, 5 trials per task (`skillarena calibrate`):
 <!-- calibration:start -->
 | Task | Sonnet 5.5 | Haiku 5.5 |
 |---|---|---|
-| original 8 tasks | 100% | — |
-| semver-satisfies | 100% | see below |
-| cron-next-run | 100% | see below |
-| json-patch | 100% | see below |
-| dedupe-contacts-perf | 100% | see below |
+| the 8 original tasks | 100% (k=5) | — |
+| semver-satisfies | 100% | 100% |
+| cron-next-run | 100% | 100% |
+| json-patch | 100% | 100% |
+| dedupe-contacts-perf | 100% | 100% |
 | revenue-report-mismatch | 100% | — |
 <!-- calibration:end -->
 
