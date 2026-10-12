@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/caioagiani/skillarena/compare/v0.3.1...v0.4.0) (2026-10-12)
+
+
+### Features
+
+* pass extra flags to the agent with --agent-args ([8cae3ab](https://github.com/caioagiani/skillarena/commit/8cae3ab41d0d3b708e7a1038a17daa24f1e21dcf))
+* skill usage metric, doctor, Claude Code plugin, prompt install and harder tasks ([#4](https://github.com/caioagiani/skillarena/issues/4)) ([432fe73](https://github.com/caioagiani/skillarena/commit/432fe73c71f66f9b9c8cc864b6129fb11e599f78))
+
 ## [0.3.1](https://github.com/caioagiani/skillarena/compare/v0.3.0...v0.3.1) (2026-10-12)
 
 
