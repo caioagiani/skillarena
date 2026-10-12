@@ -62,7 +62,11 @@ ${bold("Options")}
   --refresh             Re-fetch skills that track a branch
 `;
 
+// `--agent-args "--flag value"` starts with a dash, which parseArgs rejects: bind it explicitly.
+const argv = process.argv.slice(2).flatMap((a, i, all) => (all[i - 1] === "--agent-args" ? [] : a === "--agent-args" && i + 1 < all.length ? [`--agent-args=${all[i + 1]}`] : [a]));
+
 const { values, positionals } = parseArgs({
+  args: argv,
   allowPositionals: true,
   options: {
     agent: { type: "string", default: "claude-code" },
@@ -123,7 +127,7 @@ function resolveJudge(provider: Provider | undefined, isolate: boolean): string 
 async function bench(specs: SkillSpec[], label: string): Promise<void> {
   const isolate = !values["no-isolate"];
   const provider = values.provider ? getProvider(values.provider) : undefined;
-  const agent = getAgent(values.agent!, { isolate, provider, baseUrl: values["base-url"], model: values.model });
+  const agent = getAgent(values.agent!, { isolate, provider, baseUrl: values["base-url"], model: values.model, extraArgs: splitArgs(values["agent-args"] ?? "") });
   await agent.preflight();
   if (!isolate) {
     log.warn("--no-isolate: your personal agent config leaks into every condition, including the baseline.");
