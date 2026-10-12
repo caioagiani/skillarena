@@ -33,6 +33,13 @@ export function exec(cmd: string, args: string[], opts: ExecOptions = {}): Promi
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let settled = false;
+    const finish = (r: ExecResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(r);
+    };
     const timer =
       opts.timeoutSec != null
         ? setTimeout(() => {
@@ -42,6 +49,12 @@ export function exec(cmd: string, args: string[], opts: ExecOptions = {}): Promi
             } catch {
               child.kill("SIGKILL");
             }
+            // A grandchild in another process group can hold the pipes open forever: don't wait for it.
+            setTimeout(() => {
+              child.stdout.destroy();
+              child.stderr.destroy();
+              finish({ code: null, stdout, stderr, timedOut, durationMs: Date.now() - started });
+            }, 5000).unref();
           }, opts.timeoutSec * 1000)
         : null;
 
@@ -52,14 +65,8 @@ export function exec(cmd: string, args: string[], opts: ExecOptions = {}): Promi
       opts.onStdout?.(c);
     });
     child.stderr.on("data", (c: string) => (stderr += c));
-    child.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      resolve({ code: null, stdout, stderr: stderr + String(err), timedOut, durationMs: Date.now() - started });
-    });
-    child.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      resolve({ code, stdout, stderr, timedOut, durationMs: Date.now() - started });
-    });
+    child.on("error", (err) => finish({ code: null, stdout, stderr: stderr + String(err), timedOut, durationMs: Date.now() - started }));
+    child.on("close", (code) => finish({ code, stdout, stderr, timedOut, durationMs: Date.now() - started }));
     if (opts.input != null) child.stdin.end(opts.input);
     else child.stdin.end();
   });

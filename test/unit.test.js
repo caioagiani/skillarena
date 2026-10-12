@@ -141,3 +141,12 @@ test("errors before the agent did any work are infra errors, not fails", async (
   assert.equal(isInfraError({ ...base, error: "timeout", timedOut: true }), false);
   assert.equal(isInfraError({ ...base }), false);
 });
+
+test("timeout returns even if a detached grandchild keeps the pipes open", async () => {
+  const { exec } = await import("../dist/util.js");
+  const t = Date.now();
+  // setsid-like: the grandchild starts its own process group and inherits stdout.
+  const r = await exec(process.execPath, ["-e", `require("child_process").spawn(process.execPath, ["-e", "setTimeout(()=>{}, 60000)"], { detached: true, stdio: ["ignore", "inherit", "inherit"] }); setTimeout(()=>{}, 60000)`], { timeoutSec: 1 });
+  assert.equal(r.timedOut, true);
+  assert.ok(Date.now() - t < 10_000, `took ${Date.now() - t}ms`);
+});
