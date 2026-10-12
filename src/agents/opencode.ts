@@ -24,7 +24,7 @@ export function opencode(opts: { isolate: boolean }): Agent {
 
     async run(input: AgentRunInput): Promise<AgentRunResult> {
       if (!input.model) throw new Error("--model provider/model is required for opencode (see `opencode models`)");
-      const args = ["run", "--format", "json", "--dangerously-skip-permissions", "--dir", input.workspace, "--model", input.model, input.prompt];
+      const args = ["run", "--format", "json", "--dangerously-skip-permissions", "--dir", input.workspace, "--model", input.model, ...input.extraArgs, input.prompt];
 
       const env: NodeJS.ProcessEnv = { ...process.env };
       if (opts.isolate) {

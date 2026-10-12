@@ -67,6 +67,7 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
         "--no-session-persistence",
       ];
       if (input.model) args.push("--model", input.model);
+      args.push(...input.extraArgs);
       if (input.maxBudgetUsd && !thirdParty) args.push("--max-budget-usd", String(input.maxBudgetUsd));
       if (input.skill.install?.type === "plugin" && input.skill.dir) {
         args.push("--plugin-dir", path.join(input.skill.dir, input.skill.install.path ?? ""));

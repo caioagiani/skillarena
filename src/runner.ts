@@ -21,6 +21,7 @@ export interface RunOptions {
   timeoutSec: number;
   maxBudgetUsd?: number;
   keepWorkspaces: boolean;
+  extraArgs: string[];
 }
 
 interface Job {
@@ -134,6 +135,7 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       transcriptPath: path.join(o.outDir, transcript),
       configDir,
       builtins,
+      extraArgs: o.extraArgs,
     });
 
     const integrity = checkIntegrity(skill, res.loadedPlugins) ?? checkBuiltins(skill, builtins, res.builtinPlugins);

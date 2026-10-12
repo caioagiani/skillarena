@@ -93,6 +93,11 @@ test("detects install type from files", () => {
   assert.throws(() => detectInstall(mk(["README.md"])));
 });
 
+test("splits agent args", async () => {
+  const { splitArgs } = await import("../dist/util.js");
+  assert.deepEqual(splitArgs(`--autocompact 100000 --append-system-prompt "be brief" -x 'a b'`), ["--autocompact", "100000", "--append-system-prompt", "be brief", "-x", "a b"]);
+});
+
 test("stats", () => {
   const [lo, hi] = wilson(5, 10);
   assert.ok(lo > 0.18 && lo < 0.25 && hi > 0.75 && hi < 0.82);

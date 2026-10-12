@@ -95,6 +95,15 @@ export async function pool<T>(items: T[], limit: number, fn: (item: T, i: number
   await Promise.all(workers);
 }
 
+/** Split a command-line string into arguments, honouring single and double quotes. */
+export function splitArgs(s: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) out.push(m[1] ?? m[2] ?? m[3]);
+  return out;
+}
+
 export function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max) + `… [${s.length - max} more chars]`;
 }

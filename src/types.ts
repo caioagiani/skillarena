@@ -57,6 +57,8 @@ export interface AgentRunInput {
   configDir: string;
   /** Every builtin plugin under test in this run: enabled for its own condition, disabled for all others. */
   builtins: string[];
+  /** Extra CLI flags passed verbatim to the agent (same for every condition). */
+  extraArgs: string[];
 }
 
 export interface AgentRunResult {

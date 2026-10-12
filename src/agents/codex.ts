@@ -34,6 +34,7 @@ export function codex(opts: { isolate: boolean }): Agent {
         input.workspace,
       ];
       if (input.model) args.push("-m", input.model);
+      args.push(...input.extraArgs);
       args.push(input.prompt);
 
       const env: NodeJS.ProcessEnv = { ...process.env };

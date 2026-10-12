@@ -14,7 +14,7 @@ import { BASELINE, loadRegistry, parseSkillArg, resolveSkill } from "./skills.js
 import { HIDDEN_DIR, copyFixture, loadTasks, parseTestCounts } from "./tasks.js";
 import { bold, dim, green, printSummary, red, yellow } from "./terminal.js";
 import type { SkillSpec } from "./types.js";
-import { exec, log, sh, tmpDir, which } from "./util.js";
+import { exec, log, sh, splitArgs, tmpDir, which } from "./util.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8")) as { version: string };
@@ -50,6 +50,7 @@ ${bold("Options")}
   --judge <spec>        auto (default) | none | haiku | <provider>:<model>
   --timeout <sec>       Per-trial timeout (default: 900)
   --max-budget-usd <n>  Per-trial spend cap
+  --agent-args "<flags>"  Extra flags for the agent CLI, same for every condition (e.g. "--autocompact 100000")
   --out <dir>           Output folder (default: results/<run-id>)
   --run-id <id>         Resume an interrupted run
   --no-isolate          Use your own agent config (contaminates results)
@@ -73,6 +74,7 @@ const { values, positionals } = parseArgs({
     judge: { type: "string", default: "auto" },
     timeout: { type: "string", default: "900" },
     "max-budget-usd": { type: "string" },
+    "agent-args": { type: "string" },
     "no-isolate": { type: "boolean", default: false },
     keep: { type: "boolean", default: false },
     refresh: { type: "boolean", default: false },
@@ -147,6 +149,7 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     isolate,
     trials,
     judge: judgeSpec,
+    agentArgs: values["agent-args"] ?? null,
     startedAt: new Date().toISOString(),
     skills: skills.map((s) => ({ id: s.id, repo: s.repo, ref: s.ref ?? null, sha: s.sha, install: s.install })),
     tasks: tasks.map((t) => ({ id: t.id, kind: t.kind })),
@@ -167,6 +170,7 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     timeoutSec: Number(values.timeout),
     maxBudgetUsd: values["max-budget-usd"] ? Number(values["max-budget-usd"]) : undefined,
     keepWorkspaces: values.keep!,
+    extraArgs: splitArgs(values["agent-args"] ?? ""),
   });
 
   await writeMeta(outDir, { finishedAt: new Date().toISOString() });
