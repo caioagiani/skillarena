@@ -1,0 +1,10 @@
+id: json-patch
+title: Implement RFC 6902 JSON Patch with atomic semantics
+kind: feature
+prompt: |
+  Implement `applyPatch(document, patch)` in src/patch.js. It must follow RFC 6902 (JSON Patch) and
+  RFC 6901 (JSON Pointer) exactly as summarised in README.md. Clients send these patches to our API,
+  so invalid patches must be rejected without side effects. Don't add dependencies.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+timeoutSec: 1200
+protected: []
