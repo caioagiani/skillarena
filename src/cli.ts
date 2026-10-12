@@ -263,7 +263,7 @@ async function cmdDoctor() {
   const claudeReady = Boolean(agents["claude-code"]) && (claudeAuth || ready.length > 0);
   const others = (["opencode", "codex"] as const).filter((id) => agents[id]);
   if (nodeOk && claudeReady) {
-    process.stdout.write(`${green("Ready.")} Try: npx skillarena superpowers --tasks split-amount --trials 1\n`);
+    process.stdout.write(`${green("Ready.")} Smoke test: npx skillarena <skill> --tasks split-amount --trials 1\n`);
     return;
   }
   const next = !nodeOk
