@@ -365,6 +365,7 @@ async function cmdValidate() {
     process.stdout.write(
       `${good ? green("✓") : red("✗")} ${task.id.padEnd(24)} ${dim("fixture")} ${before.passed}✓ ${before.failed}✗` +
         (after ? `  ${dim("solution")} ${after.passed}✓ ${after.failed}✗` : dim("  (contradictory by design)")) +
+        (after && !after.ok && after.failedTests.length ? `\n    ${dim("solution fails:")} ${after.failedTests.join(", ")}` : "") +
         note +
         "\n",
     );

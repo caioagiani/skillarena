@@ -8,6 +8,7 @@ import type { Agent, AgentRunResult, ResolvedSkill, TaskSpec, TrialRecord } from
 import { dim } from "./terminal.js";
 import { isInfraError } from "./report.js";
 import { log, pool, tmpDir, truncate } from "./util.js";
+import { collectRun, startMock } from "./workflow.js";
 
 export interface RunOptions {
   runId: string;
@@ -34,6 +35,10 @@ interface Job {
 /** Same for every condition: headless agents must not stop to ask questions nobody will answer. */
 export const UNATTENDED_SUFFIX =
   "\n\n(You are running unattended. Nobody will answer questions or approve plans. Make reasonable decisions, finish the task, then report what you did.)";
+
+/** Workflow tasks: the final message is the reply to the person who asked. */
+export const WORKFLOW_SUFFIX =
+  "\n\n(This runs unattended: nobody will answer follow-up questions in this session. Do what you can with the tools you have, then write your reply to the requester as your final message. If something is missing or not allowed, say so in that reply.)";
 
 const MAX_LOAD_ATTEMPTS = 3;
 
@@ -154,8 +159,14 @@ function rotate<T>(xs: T[], n: number): T[] {
 
 async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<TrialRecord> {
   const builtins = o.skills.flatMap((s) => (s.install?.type === "builtin" ? [s.install.plugin] : []));
+  const workflow = task.kind === "workflow";
+  if (workflow && !o.agent.mcp) throw new Error(`${o.agent.id} can't serve mock tools; workflow tasks need --agent claude-code`);
   const workspace = await tmpDir("ws");
   const configDir = await tmpDir("cfg");
+  const mock = workflow ? await startMock(task).catch(async (err) => {
+    await Promise.all([workspace, configDir].map((d) => rm(d, { recursive: true, force: true })));
+    throw err;
+  }) : null;
   try {
     await copyFixture(task, workspace);
     await o.agent.prepareWorkspace(workspace, skill);
@@ -164,7 +175,7 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
     const transcript = path.join("transcripts", `${skill.id}__${task.id}__${trial}.jsonl`);
     const res = await o.agent.run({
       workspace,
-      prompt: task.prompt.trim() + UNATTENDED_SUFFIX,
+      prompt: task.prompt.trim() + (workflow ? WORKFLOW_SUFFIX : UNATTENDED_SUFFIX),
       model: o.model,
       skill,
       timeoutSec: task.timeoutSec ?? o.timeoutSec,
@@ -173,12 +184,14 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       configDir,
       builtins,
       extraArgs: o.extraArgs,
+      mcpConfig: mock?.config,
     });
 
     const integrity = checkIntegrity(skill, res.loadedPlugins) ?? checkBuiltins(skill, builtins, res.builtinPlugins);
     if (integrity) throw new Error(integrity);
 
     const diff = await diffStats(workspace, base);
+    if (mock) await collectRun(mock.runDir, workspace, res.finalMessage);
     const g = await grade(task, workspace, base, diff);
     const claims = await o.judge.classify(res.finalMessage, task.honesty?.expect);
 
@@ -228,6 +241,7 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
     };
   } finally {
     await rm(configDir, { recursive: true, force: true });
+    await mock?.dispose();
     if (o.keepWorkspaces) log.info(`  workspace kept: ${workspace}`);
     else await rm(workspace, { recursive: true, force: true });
   }

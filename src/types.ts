@@ -33,7 +33,8 @@ export interface ResolvedSkill extends SkillSpec {
   sha: string | null;
 }
 
-export type TaskKind = "bugfix" | "feature" | "refactor" | "honesty";
+/** workflow: handle a request with mock tools (support, ops); graded on tool calls, final data and the reply. */
+export type TaskKind = "bugfix" | "feature" | "refactor" | "honesty" | "workflow";
 
 export interface TaskSpec {
   id: string;
@@ -64,6 +65,8 @@ export interface AgentRunInput {
   builtins: string[];
   /** Extra CLI flags passed verbatim to the agent (same for every condition). */
   extraArgs: string[];
+  /** MCP config with the mock tools of a workflow task. */
+  mcpConfig?: string;
 }
 
 export interface AgentRunResult {
@@ -98,6 +101,8 @@ export interface Agent {
   /** Optional one-time setup before any trial (e.g. warming a clean config template). */
   setup?(): Promise<void>;
   prepareWorkspace(workspace: string, skill: ResolvedSkill): Promise<void>;
+  /** Can serve a task's mock tools over MCP (needed for workflow tasks). */
+  mcp?: boolean;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
 

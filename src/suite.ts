@@ -3,14 +3,14 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { analyzeSkill, generatedDir, type SkillAnalysis } from "./analyze.js";
 import { auditTask } from "./audit.js";
-import { ensureGeneratedTasks, hardenTasks, type Accept } from "./generate.js";
+import { ensureGeneratedTasks, hardenTasks, repairTasks, type Accept } from "./generate.js";
 import { heuristicJudge } from "./honesty.js";
 import { summarize } from "./report.js";
 import { readResults, runBench } from "./runner.js";
 import { loadTasks } from "./tasks.js";
 import { bold, dim, green, yellow } from "./terminal.js";
 import type { Agent, ResolvedSkill, TaskSpec } from "./types.js";
-import { log } from "./util.js";
+import { log, pool } from "./util.js";
 
 export type SuiteMode = "auto" | "builtin" | "generated";
 
@@ -46,17 +46,26 @@ interface Calibration {
   hardened: string[];
 }
 
-/** Baseline pass rate per generated task for this agent and model; harden tasks it always solves. */
+/**
+ * Baseline pass rate per generated task for this agent and model. Tasks it never solves are audited
+ * again with the failed attempts as evidence (repaired or dropped when unfair); tasks it always
+ * solves are made harder.
+ */
 async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string, o: SuiteOptions, baseline: ResolvedSkill): Promise<Calibration> {
   const tag = `${o.agent.id}-${(o.model ?? "default").replace(/[^\w.-]/g, "_")}`;
   const file = path.join(generatedDir(key), `calibration-${tag}.json`);
   if (!o.refresh && existsSync(file)) return JSON.parse(await readFile(file, "utf8"));
+  const gen = { model: o.generatorModel, isolate: o.isolate, count: o.count, builtinTasksDir: o.builtinTasksDir };
+  const runDir = (label: string) => path.join(generatedDir(key), `calibration-${tag}-${label}`);
+  const perTask: Record<string, number> = {};
+  const hardened = new Set<string>();
 
-  const measure = async (tasks: TaskSpec[], round: number) => {
-    const outDir = path.join(generatedDir(key), `calibration-${tag}-r${round}`);
+  const measure = async (ids: string[], label: string) => {
+    const tasks = (await loadTasks(tasksDir)).filter((t) => ids.includes(t.id));
+    const outDir = runDir(label);
     await rm(outDir, { recursive: true, force: true });
     await runBench({
-      runId: `calibrate-${key}-r${round}`,
+      runId: `calibrate-${key}-${label}`,
       outDir,
       agent: o.agent,
       model: o.model,
@@ -69,26 +78,50 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
       keepWorkspaces: false,
       extraArgs: [],
     });
-    return summarize(await readResults(path.join(outDir, "results.jsonl"))).skills[0]?.perTask ?? {};
+    const records = await readResults(path.join(outDir, "results.jsonl"));
+    Object.assign(perTask, summarize(records).skills[0]?.perTask ?? {});
+    return records;
+  };
+
+  /** Measure, then give tasks nobody passes a second, evidence-based fairness review. */
+  const settle = async (ids: string[], label: string) => {
+    const records = await measure(ids, label);
+    const never = ids.filter((id) => perTask[id] === 0);
+    if (!never.length) return;
+    const all = await loadTasks(tasksDir);
+    const unfair: { id: string; issues: { test: string; reason: string }[] }[] = [];
+    await pool(never, 4, async (id) => {
+      const failed = records.filter((r) => r.task === id && !r.error);
+      if (!failed.length) return;
+      const a = await auditTask(all.find((t) => t.id === id)!, {
+        model: o.generatorModel,
+        isolate: o.isolate,
+        failing: [...new Set(failed.flatMap((r) => r.failedTests))],
+        attempts: failed.slice(0, 2).map((r) => r.finalMessage),
+      }).catch(() => null);
+      if (a && !a.fair) unfair.push({ id, issues: a.issues });
+    });
+    if (!unfair.length) return;
+    log.info(dim(`  ${unfair.length} task(s) the bare agent never solved look unfair after seeing its attempts; repairing…`));
+    const fixed = await repairTasks(key, analysis, unfair, gen, fairness(o));
+    for (const { id } of unfair.filter((x) => !fixed.includes(x.id))) {
+      await rm(path.join(tasksDir, id), { recursive: true, force: true });
+      delete perTask[id];
+      log.info(dim(`  dropped ${id}: still unfair after repair`));
+    }
+    if (fixed.length) await measure(fixed, `${label}-fixed`);
   };
 
   log.info(dim(`  calibrating on the bare agent (${CALIBRATION_TRIALS} trials per task)…`));
-  const perTask = await measure(await loadTasks(tasksDir), 1);
-  const hardened = new Set<string>();
+  await settle((await loadTasks(tasksDir)).map((t) => t.id), "r1");
   for (let round = 1; round <= HARDEN_ROUNDS; round++) {
     const tooEasy = Object.entries(perTask).filter(([, v]) => v >= 1).map(([id]) => id);
     if (!tooEasy.length) break;
     log.info(dim(`  round ${round}: the bare agent always solved ${tooEasy.length} task(s); making them harder…`));
-    const done = await hardenTasks(key, analysis, tooEasy, {
-      model: o.generatorModel,
-      isolate: o.isolate,
-      count: o.count,
-      builtinTasksDir: o.builtinTasksDir,
-    }, fairness(o), { round, transcriptsDir: path.join(generatedDir(key), `calibration-${tag}-r${round}`, "transcripts") });
+    const done = await hardenTasks(key, analysis, tooEasy, gen, fairness(o), { round, transcriptsDir: path.join(runDir(`r${round}`), "transcripts") });
     if (!done.length) break;
     done.forEach((id) => hardened.add(id));
-    const tasks = (await loadTasks(tasksDir)).filter((t) => done.includes(t.id));
-    Object.assign(perTask, await measure(tasks, round + 1));
+    await settle(done, `r${round + 1}`);
   }
   const cal = { perTask, hardened: [...hardened] };
   await writeFile(file, JSON.stringify(cal, null, 2));
@@ -102,8 +135,9 @@ function describe(skill: ResolvedSkill, a: SkillAnalysis): void {
 
 /**
  * Decide which tasks to run. "auto": understand each skill, generate validated tasks for its
- * domain, calibrate them on the bare agent, and add the built-in honesty task. Falls back to
- * the built-in suite when a skill can't be analysed or isn't about coding.
+ * domain (code changes, or tool-driven work with mock tools), calibrate them on the bare agent, and
+ * add the built-in honesty task for coding skills. Falls back to the built-in suite when a skill
+ * can't be analysed or its domain isn't covered.
  */
 export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Promise<TaskSpec[]> {
   if (o.mode === "builtin") return o.builtin;
@@ -112,6 +146,7 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
   if (!under.length || !baseline) return o.builtin;
 
   const generated: TaskSpec[] = [];
+  let anyCoding = false;
   for (const skill of under) {
     let analysis: SkillAnalysis;
     let key: string;
@@ -122,10 +157,15 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
       continue;
     }
     describe(skill, analysis);
-    if (analysis.domain !== "coding") {
-      log.warn(`${skill.id} is a ${analysis.domain} skill. Generated tasks cover coding skills for now; using the built-in suite for it.`);
+    if (analysis.domain === "tool-workflow" && !o.agent.mcp) {
+      log.warn(`${skill.id} drives tools; its generated tasks need mock tools over MCP, which ${o.agent.id} can't serve yet. Using the built-in suite for it.`);
       continue;
     }
+    if (analysis.domain !== "coding" && analysis.domain !== "tool-workflow") {
+      log.warn(`${skill.id} is a ${analysis.domain} skill. Generated tasks cover coding and tool-driven skills; using the built-in suite for it.`);
+      continue;
+    }
+    if (analysis.domain === "coding") anyCoding = true;
     const dir = await ensureGeneratedTasks(key, analysis, {
       model: o.generatorModel,
       isolate: o.isolate,
@@ -156,7 +196,7 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
     if (o.mode === "generated") throw new Error("No generated tasks available.");
     return o.builtin;
   }
-  const always = o.mode === "generated" ? [] : o.builtin.filter((t) => ALWAYS.includes(t.id));
+  const always = o.mode === "generated" || !anyCoding ? [] : o.builtin.filter((t) => ALWAYS.includes(t.id));
   const seen = new Set<string>();
   return [...generated, ...always].filter((t) => !seen.has(t.id) && seen.add(t.id));
 }

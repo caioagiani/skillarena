@@ -52,6 +52,8 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       if (r.code !== 0) log.warn(`config warm-up failed (exit ${r.code}); trials start from a cold config`);
     },
 
+    mcp: true,
+
     prepareWorkspace(workspace: string, skill: ResolvedSkill) {
       return installSkill(workspace, skill, { instructionsFile: "CLAUDE.md", skillsDir: ".claude/skills", plugins: "native" });
     },
@@ -69,6 +71,8 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       ];
       if (input.model) args.push("--model", input.model);
       args.push(...input.extraArgs);
+      // Only the task's mock tools: a real MCP server from the skill must never be reached.
+      if (input.mcpConfig) args.push("--mcp-config", input.mcpConfig, "--strict-mcp-config");
       if (input.maxBudgetUsd && !thirdParty) args.push("--max-budget-usd", String(input.maxBudgetUsd));
       if (input.skill.install?.type === "plugin" && input.skill.dir) {
         args.push("--plugin-dir", path.join(input.skill.dir, input.skill.install.path ?? ""));
