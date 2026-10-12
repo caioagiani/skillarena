@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/caioagiani/skillarena/compare/v0.6.0...v0.7.0) (2026-10-12)
+
+
+### Features
+
+* workflow tasks for support and ops skills (beta) ([#16](https://github.com/caioagiani/skillarena/issues/16)) ([24ae85f](https://github.com/caioagiani/skillarena/commit/24ae85fc6f2e8b78fbd391733dcb98484148c27a))
+
 ## [0.6.0](https://github.com/caioagiani/skillarena/compare/v0.5.0...v0.6.0) (2026-10-12)
 
 
