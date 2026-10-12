@@ -69,11 +69,13 @@ export function detectInstall(dir: string, sub = ""): SkillInstall {
   }
   if (has(".claude-plugin/plugin.json")) return { type: "plugin", path: sub || undefined };
   if (has("SKILL.md")) return { type: "skills-dir", path: sub, single: true };
+  // More than skills (settings, agents, hooks, commands): install the whole project setup.
+  if (["settings.json", "agents", "hooks", "commands"].some((p) => has(path.join(".claude", p)))) return { type: "project", path: sub || undefined };
   if (has("CLAUDE.md")) return { type: "instructions", path: path.join(sub, "CLAUDE.md") };
   if (has("AGENTS.md")) return { type: "instructions", path: path.join(sub, "AGENTS.md") };
   if (has("skills")) return { type: "skills-dir", path: path.join(sub, "skills") };
   if (has(".claude/skills")) return { type: "skills-dir", path: path.join(sub, ".claude/skills") };
-  throw new Error(`Couldn't detect how to install ${root}: no .claude-plugin/plugin.json, SKILL.md, CLAUDE.md, AGENTS.md or skills/ found.`);
+  throw new Error(`Couldn't detect how to install ${root}: no .claude-plugin/plugin.json, SKILL.md, .claude/, CLAUDE.md, AGENTS.md or skills/ found.`);
 }
 
 function cacheRoot(): string {

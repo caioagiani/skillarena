@@ -134,6 +134,11 @@ export function skillUsed(skill: ResolvedSkill, res: Pick<AgentRunResult, "skill
     const name = res.loadedPlugins?.find((p) => path.resolve(p.path) === expected)?.name;
     return name ? calls.some((c) => c.startsWith(`${name}:`)) : calls.length > 0;
   }
+  if (install.type === "project") {
+    const dir = skill.dir ? path.join(skill.dir, install.path ?? "", ".claude", "skills") : null;
+    const names = dir && existsSync(dir) ? readdirSync(dir) : [];
+    return calls.some((c) => names.includes(c.split(":").pop()!));
+  }
   if (install.type === "skills-dir") {
     const dir = skill.dir ? path.join(skill.dir, install.path) : null;
     const names = install.single || !dir || !existsSync(dir) ? [skill.id] : readdirSync(dir);

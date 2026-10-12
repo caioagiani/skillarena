@@ -4,6 +4,7 @@
 #   plugin        load the repo as a Claude Code plugin (--plugin-dir); hooks, skills, agents included
 #   instructions  copy one file into the workspace as CLAUDE.md (AGENTS.md for Codex)
 #   skills-dir    copy a folder of SKILL.md skills into .claude/skills (.agents/skills for Codex)
+#   project       copy a repo's whole .claude/ setup (settings, agents, hooks, commands, skills) and CLAUDE.md
 #
 # ref: branch, tag or commit. The resolved commit SHA is recorded in every result row.
 # Want your skill benchmarked? Open a PR adding it here.
