@@ -152,3 +152,19 @@ test("timeout returns even if a detached grandchild keeps the pipes open", async
   assert.equal(r.timedOut, true);
   assert.ok(Date.now() - t < 10_000, `took ${Date.now() - t}ms`);
 });
+
+test("parses JSON from model replies with fences or prose", async () => {
+  const { parseJsonReply } = await import("../dist/llm.js");
+  assert.deepEqual(parseJsonReply('Sure:\n```json\n{"a": 1}\n```'), { a: 1 });
+  assert.deepEqual(parseJsonReply('{"a": {"b": [1, 2]}} trailing'), { a: { b: [1, 2] } });
+  assert.throws(() => parseJsonReply("no json here"));
+});
+
+test("cache key follows the skill version", async () => {
+  const { skillKey } = await import("../dist/analyze.js");
+  assert.equal(skillKey({ id: "sp", sha: "bb92a77741419a4ab5f06e711a283343f1ada0c3" }, "x"), "sp@bb92a7774141");
+  const a = skillKey({ id: "local", sha: "local" }, "v1");
+  assert.notEqual(a, skillKey({ id: "local", sha: "local" }, "v2"));
+  assert.equal(a, skillKey({ id: "local", sha: "local" }, "v1"));
+  assert.notEqual(skillKey({ id: "mine", repo: "/x/mine", sha: "bb92a77741419a4ab5f06e711a283343f1ada0c3" }, "v1"), "mine@bb92a7774141");
+});

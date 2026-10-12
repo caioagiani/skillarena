@@ -2,10 +2,10 @@ import { createWriteStream, existsSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import YAML from "yaml";
 import path from "node:path";
-import { generatedDir, type SkillAnalysis } from "./analyze.js";
+import { generatedDir, type Scenario, type SkillAnalysis } from "./analyze.js";
 import { loadTasks, validateTask } from "./tasks.js";
 import type { TaskSpec } from "./types.js";
-import { exec, log, tmpDir } from "./util.js";
+import { exec, log, pool, tmpDir } from "./util.js";
 import { dim } from "./terminal.js";
 
 /** Built-in tasks shown to the generator as the format and quality bar. */
@@ -72,35 +72,40 @@ export default function (dir) {
 }
 `;
 
-const GENERATE_PROMPT = (a: SkillAnalysis, count: number) => `You write benchmark tasks for coding agents. Read FORMAT.md and study the two complete examples in examples/.
+const GENERATE_PROMPT = (a: SkillAnalysis, scenario: Scenario, id: string) => `You write a benchmark task for coding agents. Read FORMAT.md and study the two complete examples in examples/.
 
-Create ${count} new tasks in tasks/, one per scenario in scenarios.json (pick the ${count} best if there are more).
-They will be used to measure whether this kind of skill helps an agent:
+Create exactly ONE new task in tasks/${id}/ for this scenario:
 
+  ${scenario.title}
+  User request: ${scenario.request}
+  What must be verifiable: ${scenario.verifiableOutcome}
+
+It will help measure whether this kind of skill helps an agent:
   ${a.summary}
   It claims to: ${a.promises.slice(0, 6).join("; ")}
 
 Difficulty: a strong frontier model with no special instructions should FAIL roughly half the time.
 Get there with requirements that are hard but fully written down: several interacting rules, edge cases
-spelled out in the README or doc comments, existing code with more bugs than the user reported,
-multi-file investigation, behaviour that must be preserved exactly, or performance limits.
-Never through ambiguity, trick wording or requirements that aren't written anywhere.
+spelled out in the README or doc comments, existing code with more bugs than the user reported (and a
+request that invites finding them), multi-file investigation, behaviour that must be preserved exactly,
+or performance limits. Never through ambiguity, trick wording or requirements that aren't written anywhere.
+If the request limits the scope ("only X"), the hidden tests must not require changes outside it.
 
 Correctness comes from the request and the docs you write, never from any particular workflow:
 an agent that ignores the skill but does excellent work must pass.
 
-For every task: write it, then run \`node check.mjs tasks/<id>\` and fix it until it prints
-"fixture: fails (good)" and "solution: passes (good)". Finish by listing the task ids that pass the check.`;
+Keep it compact (a few small files). Write it, then run \`node check.mjs tasks/${id}\` and fix it until it
+prints "fixture: fails (good)" and "solution: passes (good)".`;
 
-const HARDEN_PROMPT = (ids: string[]) => `These benchmark tasks in tasks/ were solved by a strong baseline agent on every attempt,
-so they can't show any difference between agents: ${ids.join(", ")}.
+const HARDEN_PROMPT = (id: string) => `The benchmark task in tasks/${id}/ was solved by a strong baseline agent on every attempt,
+so it can't show any difference between agents.
 
-Make each one substantially harder, in place (same folder and id), following FORMAT.md:
-add interacting requirements, more edge cases written into the README/doc comments, extra bugs in the
-existing code that the prompt doesn't mention but the docs make clear, or performance limits.
-Keep every requirement explicitly written down and fair. Update hidden/ and solution/ to match.
+Make it substantially harder, in place (same folder and id), following FORMAT.md: add interacting
+requirements, more edge cases written into the README/doc comments, extra bugs in the existing code that the
+request invites the agent to find, or performance limits. Keep every requirement explicitly written down
+and fair, and keep any scope limit in the request consistent with the hidden tests. Update hidden/ and solution/.
 
-Run \`node check.mjs tasks/<id>\` after each change until it prints "fixture: fails (good)" and
+Run \`node check.mjs tasks/${id}\` after each change until it prints "fixture: fails (good)" and
 "solution: passes (good)".`;
 
 export interface GenerateOptions {
@@ -136,15 +141,38 @@ async function prepareWorkdir(analysis: SkillAnalysis, opts: GenerateOptions): P
   return work;
 }
 
-const REPAIR_PROMPT = (issues: Record<string, { test: string; reason: string }[]>) => `An independent reviewer found unfair hidden tests in these tasks. For each task, make it fair:
+const REPAIR_PROMPT = (id: string, issues: { test: string; reason: string }[]) => `An independent reviewer found unfair hidden tests in tasks/${id}/. Make it fair:
 either remove the offending assertions, or make the requirement explicit in the request (task.yaml prompt)
 or the repo docs so a careful engineer could know it. Never weaken the task more than needed.
 
-${Object.entries(issues)
-  .map(([id, list]) => `tasks/${id}:\n${list.map((x) => `  - ${x.test}: ${x.reason}`).join("\n")}`)
-  .join("\n\n")}
+${issues.map((x) => `- ${x.test}: ${x.reason}`).join("\n")}
 
-Re-run \`node check.mjs tasks/<id>\` after each change until it prints "fixture: fails (good)" and "solution: passes (good)".`;
+Re-run \`node check.mjs tasks/${id}\` after each change until it prints "fixture: fails (good)" and "solution: passes (good)".`;
+
+/** Generator workdirs created during the current call, removed once tasks are installed. */
+const scratch: string[] = [];
+async function cleanup(): Promise<void> {
+  await Promise.all(scratch.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+}
+
+/** Run one generator agent per task in its own workdir, in parallel. Returns the finished task folders. */
+async function fanOut(
+  jobs: { id: string; prompt: string; seed?: string }[],
+  analysis: SkillAnalysis,
+  opts: GenerateOptions,
+  logFile: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  await pool(jobs, Math.min(4, jobs.length), async (job) => {
+    const work = await prepareWorkdir(analysis, opts);
+    scratch.push(work);
+    if (job.seed) await cp(job.seed, path.join(work, "tasks", job.id), { recursive: true });
+    await runGenerator(work, job.prompt, { ...opts, timeoutSec: opts.timeoutSec ?? 1500 }, logFile);
+    const dir = path.join(work, "tasks", job.id);
+    if (existsSync(path.join(dir, "task.yaml"))) out.set(job.id, dir);
+  });
+  return out;
+}
 
 /** Decides whether a valid task may be used (e.g. a fairness audit). */
 export type Accept = (task: TaskSpec) => Promise<{ ok: boolean; issues: { test: string; reason: string }[] }>;
@@ -156,35 +184,35 @@ async function candidates(dir: string): Promise<TaskSpec[]> {
   });
 }
 
-/**
- * Validate and accept the tasks in work/tasks (only `ids` if given). Tasks that are valid but
- * rejected get one repair round from the generator with the reviewer's notes.
- */
-async function review(work: string, analysis: SkillAnalysis, opts: GenerateOptions, accept: Accept, logFile: string, ids?: string[]) {
+/** Validate and accept each task; valid tasks the reviewer rejects get one repair round. */
+async function review(dirs: Map<string, string>, analysis: SkillAnalysis, opts: GenerateOptions, accept: Accept, logFile: string) {
   const good: TaskSpec[] = [];
   const bad: string[] = [];
-  const issues: Record<string, { test: string; reason: string }[]> = {};
-  const pick = (ts: TaskSpec[]) => (ids ? ts.filter((t) => ids.includes(t.id)) : ts).filter((t) => t.kind !== "honesty");
-  for (const t of pick(await candidates(path.join(work, "tasks")))) {
+  const toRepair: { id: string; dir: string; issues: { test: string; reason: string }[] }[] = [];
+  const load = async (dir: string) => (await candidates(path.dirname(dir))).find((t) => t.dir === dir);
+  const check = async (t: TaskSpec | undefined) => {
+    if (!t || t.kind === "honesty") return { valid: false, ok: false, issues: [] };
     const v = await validateTask(t).catch(() => null);
-    if (!v?.ok) {
-      bad.push(t.id);
-      continue;
-    }
+    if (!v?.ok) return { valid: false, ok: false, issues: [] };
     const a = await accept(t).catch(() => ({ ok: false, issues: [{ test: "*", reason: "review failed" }] }));
-    if (a.ok) good.push(t);
-    else issues[t.id] = a.issues;
-  }
-  const toRepair = Object.keys(issues);
+    return { valid: true, ...a };
+  };
+  await pool([...dirs], 4, async ([id, dir]) => {
+    const t = await load(dir);
+    const r = await check(t);
+    if (r.ok) good.push(t!);
+    else if (r.valid) toRepair.push({ id, dir, issues: r.issues });
+    else bad.push(id);
+  });
   if (toRepair.length) {
     log.info(dim(`  reviewer flagged ${toRepair.length} task(s) as unfair; repairing…`));
-    await runGenerator(work, REPAIR_PROMPT(issues), opts, logFile);
-    for (const t of (await candidates(path.join(work, "tasks"))).filter((x) => toRepair.includes(x.id))) {
-      const v = await validateTask(t).catch(() => null);
-      const a = v?.ok ? await accept(t).catch(() => ({ ok: false, issues: [] })) : { ok: false, issues: [] };
-      if (a.ok) good.push(t);
-      else bad.push(t.id);
-    }
+    const fixed = await fanOut(toRepair.map((x) => ({ id: x.id, prompt: REPAIR_PROMPT(x.id, x.issues), seed: x.dir })), analysis, opts, logFile);
+    await pool(toRepair, 4, async (x) => {
+      const t = fixed.has(x.id) ? await load(fixed.get(x.id)!) : undefined;
+      const r = await check(t);
+      if (r.ok) good.push(t!);
+      else bad.push(x.id);
+    });
   }
   return { good, bad };
 }
@@ -202,6 +230,8 @@ async function install(t: TaskSpec, dest: string): Promise<TaskSpec> {
   return { ...t, id, dir: path.join(dest, id) };
 }
 
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+
 /** Generate (or load cached) validated, reviewed tasks for a skill. Returns the folder that holds them. */
 export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis, opts: GenerateOptions & { refresh?: boolean }, accept: Accept): Promise<string> {
   const dest = path.join(generatedDir(key), "tasks");
@@ -209,27 +239,32 @@ export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis,
   await rm(dest, { recursive: true, force: true });
   await mkdir(dest, { recursive: true });
 
-  const work = await prepareWorkdir(analysis, opts);
   const logFile = path.join(generatedDir(key), "generator.jsonl");
-  log.info(dim(`  generating ${opts.count} tasks for this skill's domain (a few minutes)…`));
-  await runGenerator(work, GENERATE_PROMPT(analysis, opts.count), opts, logFile);
-  const { good, bad } = await review(work, analysis, opts, accept, logFile);
+  const scenarios = analysis.scenarios.slice(0, opts.count);
+  const ids = new Set<string>();
+  const jobs = scenarios.map((sc, i) => {
+    let id = `gen-${slug(sc.title) || `task-${i + 1}`}`;
+    while (ids.has(id)) id += "-x";
+    ids.add(id);
+    return { id, prompt: GENERATE_PROMPT(analysis, sc, id) };
+  });
+  log.info(dim(`  generating ${jobs.length} tasks for this skill's domain, in parallel (a few minutes)…`));
+  const dirs = await fanOut(jobs, analysis, opts, logFile);
+  const { good, bad } = await review(dirs, analysis, opts, accept, logFile);
   for (const t of good) await install(t, dest);
   log.info(`  generated ${good.length} valid, reviewed task(s)${bad.length ? dim(`, discarded ${bad.length}`) : ""}`);
-  await rm(work, { recursive: true, force: true });
+  await cleanup();
   return dest;
 }
 
 /** Rewrite tasks the baseline always solves. The old version stays unless the new one is valid and accepted. */
 export async function hardenTasks(key: string, analysis: SkillAnalysis, ids: string[], opts: GenerateOptions, accept: Accept): Promise<string[]> {
   const dest = path.join(generatedDir(key), "tasks");
-  const work = await prepareWorkdir(analysis, opts);
-  for (const id of ids) await cp(path.join(dest, id), path.join(work, "tasks", id), { recursive: true });
   const logFile = path.join(generatedDir(key), "generator.jsonl");
   log.info(dim(`  making ${ids.length} task(s) harder…`));
-  await runGenerator(work, HARDEN_PROMPT(ids), opts, logFile);
-  const { good } = await review(work, analysis, opts, accept, logFile, ids);
+  const dirs = await fanOut(ids.map((id) => ({ id, prompt: HARDEN_PROMPT(id), seed: path.join(dest, id) })), analysis, opts, logFile);
+  const { good } = await review(dirs, analysis, opts, accept, logFile);
   for (const t of good) await install(t, dest);
-  await rm(work, { recursive: true, force: true });
+  await cleanup();
   return good.map((t) => t.id);
 }
