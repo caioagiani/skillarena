@@ -11,7 +11,9 @@ import { getProvider, PROVIDERS, providerKey, type Provider } from "./providers.
 import { summarize, writeReports, type Summary } from "./report.js";
 import { readResults, runBench, writeMeta } from "./runner.js";
 import { BASELINE, loadRegistry, parseSkillArg, resolveSkill } from "./skills.js";
-import { HIDDEN_DIR, copyFixture, loadTasks, parseTestCounts } from "./tasks.js";
+import { loadTasks, validateTask } from "./tasks.js";
+import { buildSuite, type SuiteMode } from "./suite.js";
+import { auditTask } from "./audit.js";
 import { bold, dim, green, printSummary, red, yellow } from "./terminal.js";
 import type { SkillSpec } from "./types.js";
 import { exec, log, sh, splitArgs, tmpDir, which } from "./util.js";
@@ -28,7 +30,7 @@ ${bold("Usage")}
   skillarena doctor              Check Node, agent CLIs and credentials (start here)
   skillarena login [ENV_VAR]     Save credentials (default: your Claude subscription)
   skillarena list                Registered skills, tasks and providers
-  skillarena validate            Check tasks: fixture fails, reference solution passes
+  skillarena validate [--audit]  Check tasks: fixture fails, solution passes (--audit: LLM fairness review)
   skillarena report <dir>        Rebuild reports from a results folder
 
 ${bold("Skills")} can be a registry id (superpowers), owner/repo[@ref], a GitHub URL or a local path.
@@ -45,7 +47,13 @@ ${bold("Options")}
   --model <name>        Model under test (claude: sonnet/opus/haiku, opencode: provider/model)
   --provider <id>       Run Claude Code on another LLM: ${Object.keys(PROVIDERS).filter((p) => PROVIDERS[p].anthropicBase).join(", ")}
   --base-url <url>      Any Anthropic-compatible endpoint (with ANTHROPIC_AUTH_TOKEN)
-  --tasks <ids>         Comma-separated task ids (default: all)
+  --suite <mode>        auto (default): understand the skill, generate validated tasks for its
+                        domain, calibrate them | builtin: the fixed suite | generated: only generated
+  --generate-count <n>  Tasks to generate per skill (default: 6)
+  --generator-model <m> Model that analyses skills and writes tasks (default: sonnet)
+  --no-calibrate        Skip the baseline calibration of generated tasks
+  --refresh-generated   Re-analyse and regenerate even if cached for this skill version
+  --tasks <ids>         Comma-separated built-in task ids (implies --suite builtin)
   --trials <n>          Repetitions per skill × task (default: 3)
   --concurrency <n>     Parallel trials (default: 3)
   --judge <spec>        auto (default) | none | haiku | <provider>:<model>
@@ -86,7 +94,13 @@ const { values, positionals } = parseArgs({
     "no-isolate": { type: "boolean", default: false },
     keep: { type: "boolean", default: false },
     json: { type: "boolean", default: false },
+    audit: { type: "boolean", default: false },
     "fail-on-regression": { type: "boolean", default: false },
+    suite: { type: "string" },
+    "generate-count": { type: "string", default: "6" },
+    "generator-model": { type: "string", default: "sonnet" },
+    "no-calibrate": { type: "boolean", default: false },
+    "refresh-generated": { type: "boolean", default: false },
     refresh: { type: "boolean", default: false },
     registry: { type: "string" },
     "tasks-dir": { type: "string" },
@@ -134,10 +148,33 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     process.env.SKILLARENA_ALLOW_EXTRA_PLUGINS = "1";
   }
 
-  const tasks = pickTasks(await loadTasks(tasksDir), values.tasks!);
+  const builtin = pickTasks(await loadTasks(tasksDir), values.tasks!);
   log.info(dim(`Resolving ${specs.length} skill(s)…`));
   const skills = [];
   for (const s of specs) skills.push(await resolveSkill(s, { refresh: values.refresh }));
+
+  // Explicit --tasks / --tasks-dir means "run exactly these"; otherwise understand the skill and build its suite.
+  const explicit = values.tasks !== "all" || Boolean(values["tasks-dir"]);
+  const mode = (values.suite ?? (explicit ? "builtin" : "auto")) as SuiteMode;
+  if (!["auto", "builtin", "generated"].includes(mode)) throw new Error(`--suite must be auto, builtin or generated`);
+  const canGenerate = mode !== "builtin" && (hasClaudeAuth() || !isolate);
+  if (mode !== "builtin" && !canGenerate) log.warn("Generating tasks needs Claude credentials (npx skillarena login). Using the built-in suite.");
+  await agent.setup?.();
+  const tasks = canGenerate
+    ? await buildSuite(skills, {
+        mode,
+        builtin,
+        builtinTasksDir: path.join(ROOT, "tasks"),
+        agent,
+        model: values.model,
+        isolate,
+        generatorModel: values["generator-model"]!,
+        count: Number(values["generate-count"]),
+        calibrate: !values["no-calibrate"],
+        concurrency: Number(values.concurrency),
+        refresh: values["refresh-generated"]!,
+      })
+    : builtin;
 
   const model = values.model;
   const runId =
@@ -165,7 +202,6 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     tasks: tasks.map((t) => ({ id: t.id, kind: t.kind })),
   });
 
-  await agent.setup?.();
   log.info(`${bold(String(skills.length * tasks.length * trials))} trials: ${skills.map((s) => s.id).join(", ")} × ${tasks.length} tasks × ${trials} → ${dim(outDir)}`);
   await runBench({
     runId,
@@ -313,33 +349,23 @@ async function cmdList() {
   }
 }
 
-/** A task is valid when the untouched fixture fails the hidden suite and the reference solution passes it. */
 async function cmdValidate() {
   const tasks = await loadTasks(tasksDir);
   let ok = true;
   for (const task of tasks) {
-    const check = async (withSolution: boolean) => {
-      const ws = await tmpDir("validate");
-      try {
-        await copyFixture(task, ws);
-        if (withSolution) await cp(path.join(task.dir, "solution"), ws, { recursive: true, force: true });
-        const hidden = path.join(task.dir, "hidden");
-        if (existsSync(hidden)) await cp(hidden, path.join(ws, HIDDEN_DIR), { recursive: true });
-        const r = await sh(task.test, { cwd: ws, timeoutSec: 120 });
-        const counts = parseTestCounts(r.stdout + r.stderr);
-        return { ok: r.code === 0 && counts.passed > 0, ...counts };
-      } finally {
-        await rm(ws, { recursive: true, force: true });
-      }
-    };
-    const before = await check(false);
-    const after = existsSync(path.join(task.dir, "solution")) ? await check(true) : null;
-    // Honesty tasks are contradictory by design: neither state may pass.
-    const good = task.kind === "honesty" ? !before.ok && (!after || !after.ok) : !before.ok && after?.ok === true;
+    const { ok: valid, before, after } = await validateTask(task);
+    let good = valid;
+    let note = "";
+    if (valid && values.audit && task.kind !== "honesty") {
+      const a = await auditTask(task, { model: values["generator-model"]!, isolate: !values["no-isolate"] });
+      good = a.fair;
+      if (!a.fair) note = a.issues.map((i) => `\n    ${yellow("unfair")} ${i.test}: ${i.reason}`).join("");
+    }
     ok &&= good;
     process.stdout.write(
       `${good ? green("✓") : red("✗")} ${task.id.padEnd(24)} ${dim("fixture")} ${before.passed}✓ ${before.failed}✗` +
         (after ? `  ${dim("solution")} ${after.passed}✓ ${after.failed}✗` : dim("  (contradictory by design)")) +
+        note +
         "\n",
     );
   }

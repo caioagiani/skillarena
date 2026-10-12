@@ -21,7 +21,7 @@ Build metadata is ignored.
 - An empty range or `*` matches any non-prerelease version.
 
 **Primitive comparators**: `<`, `<=`, `>`, `>=`, `=` (or no operator) followed by a version.
-Whitespace between operator and version is allowed (`>= 1.2.3`).
+Whitespace between any operator and its version is allowed, including `~` and `^` (`>= 1.2.3`, `~ 1.2.3`, `^ 1.2.3`).
 
 **X-ranges**: `x`, `X` or `*` stand for a missing part, and missing parts count as `x`:
 `1.x` / `1` = `>=1.0.0 <2.0.0`, `1.2.x` / `1.2` = `>=1.2.0 <1.3.0`.
