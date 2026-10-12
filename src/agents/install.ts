@@ -35,6 +35,18 @@ export async function installSkill(workspace: string, skill: ResolvedSkill, layo
     case "skills-dir":
       await copySkills(src, Boolean(skill.install.single));
       break;
+    case "project": {
+      const claudeDir = path.join(src, ".claude");
+      if (layout.plugins === "native") {
+        if (existsSync(claudeDir)) await cp(claudeDir, path.join(workspace, ".claude"), { recursive: true });
+        if (existsSync(path.join(src, "CLAUDE.md"))) await copyFile(path.join(src, "CLAUDE.md"), path.join(workspace, layout.instructionsFile));
+        break;
+      }
+      // Other agents: closest equivalent is the skills plus the instructions file.
+      if (existsSync(path.join(claudeDir, "skills"))) await copySkills(path.join(claudeDir, "skills"), false);
+      if (existsSync(path.join(src, "CLAUDE.md"))) await copyFile(path.join(src, "CLAUDE.md"), path.join(workspace, layout.instructionsFile));
+      break;
+    }
     case "plugin":
       if (layout.plugins === "native") break;
       if (existsSync(path.join(src, "skills"))) await copySkills(path.join(src, "skills"), false);

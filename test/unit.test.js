@@ -93,6 +93,8 @@ test("detects install type from files", () => {
   assert.deepEqual(detectInstall(mk(["SKILL.md"])), { type: "skills-dir", path: "", single: true });
   assert.deepEqual(detectInstall(mk(["CLAUDE.md"])), { type: "instructions", path: "CLAUDE.md" });
   assert.deepEqual(detectInstall(mk(["skills/a/SKILL.md"])), { type: "skills-dir", path: "skills" });
+  assert.deepEqual(detectInstall(mk([".claude/settings.json", ".claude/skills/a/SKILL.md", "CLAUDE.md"])), { type: "project", path: undefined });
+  assert.deepEqual(detectInstall(mk([".claude/skills/a/SKILL.md"])), { type: "skills-dir", path: ".claude/skills" });
   assert.throws(() => detectInstall(mk(["README.md"])));
 });
 

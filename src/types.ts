@@ -5,6 +5,11 @@ export type SkillInstall =
   | { type: "instructions"; path: string }
   /** Copy a directory of SKILL.md folders into the workspace skills dir. */
   | { type: "skills-dir"; path: string; single?: boolean }
+  /**
+   * A whole Claude Code project setup: the repo's `.claude/` folder (settings, agents, hooks,
+   * commands, skills) plus its root CLAUDE.md, copied into the workspace.
+   */
+  | { type: "project"; path?: string }
   /** A plugin that ships inside Claude Code (`name@builtin`), toggled through settings. */
   | { type: "builtin"; plugin: string; path?: undefined }
   /** Detect from the repo layout after fetching (plugin > instructions > skills-dir). */

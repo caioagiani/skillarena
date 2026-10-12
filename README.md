@@ -89,7 +89,8 @@ npx skillarena run                           # the whole registry
 
 A skill can be a registry id, `owner/repo[@ref]`, a GitHub URL (including subfolders), a local
 path, or a Claude Code builtin plugin (`name@builtin`). The install type (plugin, `CLAUDE.md`,
-`SKILL.md` folder) is **auto-detected**.
+`SKILL.md` folder, or a whole project setup with `.claude/` settings, agents, hooks and commands) is
+**auto-detected**.
 
 ```bash
 npx skillarena cc-plugin-you-should-know@builtin   # builtin plugins: enabled only in their own condition
@@ -254,6 +255,10 @@ See [Tasks](#tasks) for how to get a pass-rate signal.
 
 **How much does a run cost?** About `skills × tasks × trials` agent sessions. Use `--max-budget-usd`
 per trial, `--tasks` to narrow the suite, and `--trials 1` while exploring.
+
+**Can I benchmark a non-coding agent?** The built-in suite is coding tasks, so a support or sales
+agent will (correctly) fail it. Bring tasks from its own domain with `--tasks-dir`: any task whose
+outcome a script can check works.
 
 **Is it safe?** Agents run with permission prompts bypassed inside temp directories. Run it on a machine
 you're comfortable with that on, in a container, or in CI.
