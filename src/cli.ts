@@ -25,6 +25,7 @@ ${bold("Usage")}
   skillarena <skill...>          Compare skills against the bare agent (baseline)
   skillarena run                 Benchmark every skill in the registry
   skillarena calibrate           Run the baseline only, find tasks with no signal
+  skillarena doctor              Check Node, agent CLIs and credentials (start here)
   skillarena login [ENV_VAR]     Save credentials (default: your Claude subscription)
   skillarena list                Registered skills, tasks and providers
   skillarena validate            Check tasks: fixture fails, reference solution passes
@@ -92,7 +93,7 @@ const { values, positionals } = parseArgs({
 
 const registryFile = values.registry ?? path.join(ROOT, "skills", "registry.yaml");
 const tasksDir = values["tasks-dir"] ?? path.join(ROOT, "tasks");
-const COMMANDS = new Set(["run", "calibrate", "login", "list", "validate", "report", "help"]);
+const COMMANDS = new Set(["run", "calibrate", "doctor", "login", "list", "validate", "report", "help"]);
 
 function pickTasks<T extends { id: string }>(all: T[], sel: string): T[] {
   if (sel === "all") return all;
@@ -239,6 +240,42 @@ async function printCalibration(dir: string) {
   );
 }
 
+/** One readiness check for people and for agents installing skillarena on someone's behalf. */
+async function cmdDoctor() {
+  const lines: string[] = [];
+  const mark = (ok: boolean | null) => (ok ? green("✓") : ok === null ? dim("·") : red("✗"));
+  const nodeOk = Number(process.versions.node.split(".")[0]) >= 22;
+  lines.push(`${mark(nodeOk)} node ${process.versions.node}${nodeOk ? "" : "  (need 22 or newer)"}`);
+
+  const agents: Record<string, string | null> = {};
+  for (const [id, bin] of [["claude-code", "claude"], ["opencode", "opencode"], ["codex", "codex"]] as const) {
+    agents[id] = (await which(bin)) ? (await exec(bin, ["--version"]).catch(() => ({ stdout: "?" }))).stdout.trim().split("\n")[0] : null;
+    lines.push(`${mark(agents[id] ? true : null)} ${id.padEnd(12)} ${agents[id] ?? dim("not installed")}`);
+  }
+
+  const claudeAuth = hasClaudeAuth();
+  const ready = Object.values(PROVIDERS).filter((p) => p.id !== "anthropic" && process.env[p.keyEnv]).map((p) => p.id);
+  lines.push(
+    `${mark(claudeAuth || ready.length > 0)} credentials  ${claudeAuth ? "Claude ready" : dim("no Claude token")}${ready.length ? ` · ${ready.join(", ")}` : ""}${existsSync(credentialsPath) ? dim(`  (saved in ${credentialsPath})`) : ""}`,
+  );
+
+  process.stdout.write(lines.join("\n") + "\n\n");
+  const claudeReady = Boolean(agents["claude-code"]) && (claudeAuth || ready.length > 0);
+  const others = (["opencode", "codex"] as const).filter((id) => agents[id]);
+  if (nodeOk && claudeReady) {
+    process.stdout.write(`${green("Ready.")} Try: npx skillarena superpowers --tasks split-amount --trials 1\n`);
+    return;
+  }
+  const next = !nodeOk
+    ? "Install Node 22 or newer."
+    : !agents["claude-code"]
+      ? "Install Claude Code: npm i -g @anthropic-ai/claude-code"
+      : "Run `npx skillarena login` in your own terminal (interactive, uses your Claude subscription), or set ANTHROPIC_API_KEY.";
+  process.stdout.write(`${yellow("Claude Code not ready.")} ${next}\n`);
+  if (nodeOk && others.length) process.stdout.write(dim(`${others.join(" and ")} can run now with --agent (they use their own login).\n`));
+  process.exitCode = 1;
+}
+
 async function cmdLogin(envName?: string) {
   if (!process.stdin.isTTY) throw new Error("login is interactive. In CI, set the environment variable directly.");
   if (envName) {
@@ -321,6 +358,7 @@ try {
   else if (!COMMANDS.has(cmd)) await cmdCompare(positionals);
   else if (cmd === "run") await cmdRun();
   else if (cmd === "calibrate") await cmdCalibrate();
+  else if (cmd === "doctor") await cmdDoctor();
   else if (cmd === "login") await cmdLogin(rest[0]);
   else if (cmd === "list") await cmdList();
   else if (cmd === "validate") await cmdValidate();
