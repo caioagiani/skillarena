@@ -69,8 +69,13 @@ npx skillarena ./my-skill                    # your own skill, from a local fold
 npx skillarena run                           # the whole registry
 ```
 
-A skill can be a registry id, `owner/repo[@ref]`, a GitHub URL (including subfolders) or a local
-path. The install type (plugin, `CLAUDE.md`, `SKILL.md` folder) is **auto-detected**.
+A skill can be a registry id, `owner/repo[@ref]`, a GitHub URL (including subfolders), a local
+path, or a Claude Code builtin plugin (`name@builtin`). The install type (plugin, `CLAUDE.md`,
+`SKILL.md` folder) is **auto-detected**.
+
+```bash
+npx skillarena cc-plugin-you-should-know@builtin   # builtin plugins: enabled only in their own condition
+```
 
 Results land in `results/<run-id>/`: a terminal summary, `index.html`, `report.md`, raw
 `results.jsonl` and the full agent transcript of every trial.

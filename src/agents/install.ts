@@ -14,7 +14,12 @@ export interface InstallLayout {
 
 /** Install a skill into a workspace the way the target agent discovers it. */
 export async function installSkill(workspace: string, skill: ResolvedSkill, layout: InstallLayout): Promise<void> {
-  if (!skill.install || !skill.dir) return;
+  if (!skill.install) return;
+  if (skill.install.type === "builtin") {
+    if (layout.plugins !== "native") throw new Error(`"${skill.install.plugin}" is a Claude Code builtin plugin: use --agent claude-code`);
+    return;
+  }
+  if (!skill.dir) return;
   const src = path.join(skill.dir, skill.install.path ?? "");
   const skillsTarget = path.join(workspace, layout.skillsDir);
   const copySkills = async (from: string, single: boolean) => {

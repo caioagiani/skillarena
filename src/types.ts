@@ -5,6 +5,8 @@ export type SkillInstall =
   | { type: "instructions"; path: string }
   /** Copy a directory of SKILL.md folders into the workspace skills dir. */
   | { type: "skills-dir"; path: string; single?: boolean }
+  /** A plugin that ships inside Claude Code (`name@builtin`), toggled through settings. */
+  | { type: "builtin"; plugin: string; path?: undefined }
   /** Detect from the repo layout after fetching (plugin > instructions > skills-dir). */
   | { type: "auto"; path?: string };
 
@@ -53,6 +55,8 @@ export interface AgentRunInput {
   maxBudgetUsd?: number;
   transcriptPath: string;
   configDir: string;
+  /** Every builtin plugin under test in this run: enabled for its own condition, disabled for all others. */
+  builtins: string[];
 }
 
 export interface AgentRunResult {
@@ -72,6 +76,8 @@ export interface AgentRunResult {
   model?: string;
   /** Plugin directories the agent reported as loaded (for contamination checks). */
   loadedPlugins?: { name: string; path: string }[];
+  /** Builtin plugins the agent reported as active. */
+  builtinPlugins?: string[];
 }
 
 export interface Agent {

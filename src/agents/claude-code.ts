@@ -52,6 +52,11 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       if (input.skill.install?.type === "plugin" && input.skill.dir) {
         args.push("--plugin-dir", path.join(input.skill.dir, input.skill.install.path ?? ""));
       }
+      if (input.builtins.length) {
+        const own = input.skill.install?.type === "builtin" ? input.skill.install.plugin : null;
+        const enabledPlugins = Object.fromEntries(input.builtins.map((b) => [b, b === own]));
+        args.push("--settings", JSON.stringify({ enabledPlugins }));
+      }
 
       const env: NodeJS.ProcessEnv = { ...process.env, DISABLE_AUTOUPDATER: "1" };
       if (opts.isolate) env.CLAUDE_CONFIG_DIR = input.configDir;
@@ -116,8 +121,10 @@ export function parseStream(stdout: string, meta: StreamMeta): AgentRunResult {
     }
     if (ev.type === "system" && ev.subtype === "init") {
       if (ev.model) out.model = ev.model;
-      if (Array.isArray(ev.plugins))
+      if (Array.isArray(ev.plugins)) {
         out.loadedPlugins = ev.plugins.filter((p: any) => p.path && p.path !== "builtin").map((p: any) => ({ name: p.name, path: p.path }));
+        out.builtinPlugins = ev.plugins.filter((p: any) => p.path === "builtin").map((p: any) => String(p.name));
+      }
     }
     if (ev.type === "assistant" && Array.isArray(ev.message?.content) && !ev.parent_tool_use_id) {
       const text = ev.message.content

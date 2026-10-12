@@ -30,6 +30,11 @@ export function parseSkillArg(arg: string, registry: SkillSpec[]): SkillSpec {
   const known = registry.find((s) => s.id === arg);
   if (known) return known;
 
+  if (/^[\w.-]+@builtin$/.test(arg)) {
+    const id = arg.replace(/@builtin$/, "").replace(/^cc-plugin-/, "");
+    return { id, name: arg, repo: "builtin", install: { type: "builtin", plugin: arg } };
+  }
+
   if (arg.startsWith(".") || arg.startsWith("/") || arg.startsWith("~")) {
     const abs = path.resolve(arg.replace(/^~(?=\/|$)/, os.homedir()));
     if (!existsSync(abs)) throw new Error(`Path not found: ${abs}`);
@@ -100,6 +105,7 @@ function finalize(spec: SkillSpec, dir: string, sha: string | null): ResolvedSki
 /** Fetch a skill (shallow, cached) and pin its commit SHA. Local paths are used in place. */
 export async function resolveSkill(spec: SkillSpec, opts: { refresh?: boolean } = {}): Promise<ResolvedSkill> {
   if (spec.repo === "none" || !spec.install) return { ...spec, dir: null, sha: null };
+  if (spec.install.type === "builtin") return { ...spec, dir: null, sha: "builtin" };
 
   if (path.isAbsolute(spec.repo)) {
     const dir = statSync(spec.repo).isDirectory() ? spec.repo : path.dirname(spec.repo);

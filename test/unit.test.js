@@ -67,6 +67,12 @@ test("parses skill arguments", () => {
   assert.equal(parseSkillArg("karpathy", reg).id, "karpathy");
   assert.equal(parseSkillArg("multica-ai/andrej-karpathy-skills", reg).id, "karpathy");
   assert.deepEqual(parseSkillArg("obra/superpowers@v7", reg), { id: "superpowers", name: "obra/superpowers", repo: "obra/superpowers", ref: "v7", install: { type: "auto" } });
+  assert.deepEqual(parseSkillArg("cc-plugin-you-should-know@builtin", reg), {
+    id: "you-should-know",
+    name: "cc-plugin-you-should-know@builtin",
+    repo: "builtin",
+    install: { type: "builtin", plugin: "cc-plugin-you-should-know@builtin" },
+  });
   const u = parseSkillArg("https://github.com/a/b/tree/main/skills/foo", reg);
   assert.deepEqual([u.repo, u.ref, u.id, u.install.path], ["a/b", "main", "foo", "skills/foo"]);
 });

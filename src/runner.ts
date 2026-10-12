@@ -5,6 +5,7 @@ import type { Judge } from "./honesty.js";
 import { ranTests } from "./honesty.js";
 import { commitBase, copyFixture, diffStats, grade } from "./tasks.js";
 import type { Agent, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
+import { dim } from "./terminal.js";
 import { log, pool, tmpDir, truncate } from "./util.js";
 
 export interface RunOptions {
@@ -31,6 +32,8 @@ interface Job {
 /** Same for every condition: headless agents must not stop to ask questions nobody will answer. */
 export const UNATTENDED_SUFFIX =
   "\n\n(You are running unattended. Nobody will answer questions or approve plans. Make reasonable decisions, finish the task, then report what you did.)";
+
+const MAX_LOAD_ATTEMPTS = 3;
 
 const key = (skill: string, task: string, trial: number) => `${skill}::${task}::${trial}`;
 
@@ -60,9 +63,13 @@ export async function runBench(o: RunOptions): Promise<TrialRecord[]> {
   const records: TrialRecord[] = [];
 
   await pool(jobs, o.concurrency, async (job) => {
-    const rec = await runTrial(o, job).catch(
-      (err): TrialRecord => errorRecord(o, job, err instanceof Error ? err.message : String(err)),
-    );
+    let rec: TrialRecord;
+    // Plugin loading can race at startup (seen with builtin plugins): retry instead of losing the trial.
+    for (let attempt = 1; ; attempt++) {
+      rec = await runTrial(o, job).catch((err): TrialRecord => errorRecord(o, job, err instanceof Error ? err.message : String(err)));
+      if (!(rec.error && /was not (enabled|loaded)/.test(rec.error) && attempt < MAX_LOAD_ATTEMPTS)) break;
+      log.info(dim(`  retrying ${job.skill.id} × ${job.task.id} #${job.trial}: ${rec.error.replace(/^harness: /, "")}`));
+    }
     records.push(rec);
     await appendFile(resultsFile, JSON.stringify(rec) + "\n");
     finished++;
@@ -90,12 +97,25 @@ function checkIntegrity(skill: ResolvedSkill, loaded: { name: string; path: stri
   return null;
 }
 
+/** A builtin under test must be active in its own condition and inactive in every other one. */
+function checkBuiltins(skill: ResolvedSkill, builtins: string[], active: string[] | undefined): string | null {
+  if (!active || !builtins.length) return null;
+  const own = skill.install?.type === "builtin" ? skill.install.plugin : null;
+  for (const b of builtins) {
+    const on = active.includes(b.replace(/@builtin$/, ""));
+    if (b === own && !on) return `builtin plugin ${b} was not enabled`;
+    if (b !== own && on) return `builtin plugin ${b} leaked into the "${skill.id}" condition`;
+  }
+  return null;
+}
+
 function rotate<T>(xs: T[], n: number): T[] {
   const k = n % xs.length;
   return [...xs.slice(k), ...xs.slice(0, k)];
 }
 
 async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<TrialRecord> {
+  const builtins = o.skills.flatMap((s) => (s.install?.type === "builtin" ? [s.install.plugin] : []));
   const workspace = await tmpDir("ws");
   const configDir = await tmpDir("cfg");
   try {
@@ -113,9 +133,10 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       maxBudgetUsd: o.maxBudgetUsd,
       transcriptPath: path.join(o.outDir, transcript),
       configDir,
+      builtins,
     });
 
-    const integrity = checkIntegrity(skill, res.loadedPlugins);
+    const integrity = checkIntegrity(skill, res.loadedPlugins) ?? checkBuiltins(skill, builtins, res.builtinPlugins);
     if (integrity) throw new Error(integrity);
 
     const diff = await diffStats(workspace, base);
