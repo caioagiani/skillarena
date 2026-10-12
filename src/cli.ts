@@ -8,7 +8,7 @@ import { getAgent } from "./agents/index.js";
 import { askSecret, credentialsPath, hasClaudeAuth, loadEnv, saveCredential } from "./config.js";
 import { makeJudge } from "./honesty.js";
 import { getProvider, PROVIDERS, providerKey, type Provider } from "./providers.js";
-import { summarize, writeReports } from "./report.js";
+import { summarize, writeReports, type Summary } from "./report.js";
 import { readResults, runBench, writeMeta } from "./runner.js";
 import { BASELINE, loadRegistry, parseSkillArg, resolveSkill } from "./skills.js";
 import { HIDDEN_DIR, copyFixture, loadTasks, parseTestCounts } from "./tasks.js";
@@ -54,6 +54,9 @@ ${bold("Options")}
   --out <dir>           Output folder (default: results/<run-id>)
   --run-id <id>         Resume an interrupted run
   --no-isolate          Use your own agent config (contaminates results)
+  --tasks-dir <dir>     Use your own task folder instead of the built-in suite
+  --json                Print the summary as JSON on stdout (progress stays on stderr)
+  --fail-on-regression  Exit 1 if any skill measurably hurts the pass rate (for CI gates)
   --keep                Keep trial workspaces for inspection
   --refresh             Re-fetch skills that track a branch
 `;
@@ -77,6 +80,8 @@ const { values, positionals } = parseArgs({
     "agent-args": { type: "string" },
     "no-isolate": { type: "boolean", default: false },
     keep: { type: "boolean", default: false },
+    json: { type: "boolean", default: false },
+    "fail-on-regression": { type: "boolean", default: false },
     refresh: { type: "boolean", default: false },
     registry: { type: "string" },
     "tasks-dir": { type: "string" },
@@ -176,9 +181,19 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
   await writeMeta(outDir, { finishedAt: new Date().toISOString() });
   const records = await readResults(path.join(outDir, "results.jsonl"));
   const summary = await writeReports(outDir, records);
-  printSummary(summary, { trials });
+  output(summary, trials);
   log.info(dim(`Report: ${path.relative(process.cwd(), path.join(outDir, "index.html"))}  ·  raw data and transcripts in ${path.relative(process.cwd(), outDir)}/`));
   if (trials < 3) log.info(dim("Tip: use --trials 5 or more before trusting a difference."));
+}
+
+function output(summary: Summary, trials?: number) {
+  if (values.json) process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+  else printSummary(summary, { trials });
+  const hurts = summary.skills.filter((k) => k.delta && k.delta.hi < 0).map((k) => k.skill);
+  if (values["fail-on-regression"] && hurts.length) {
+    log.error(`Pass rate regression: ${hurts.join(", ")}`);
+    process.exitCode = 1;
+  }
 }
 
 async function cmdCompare(args: string[]) {
@@ -295,7 +310,7 @@ async function cmdReport(dir?: string) {
   const records = await readResults(path.join(dir, "results.jsonl"));
   if (!records.length) throw new Error(`No results in ${dir}`);
   const meta = existsSync(path.join(dir, "meta.json")) ? JSON.parse(await readFile(path.join(dir, "meta.json"), "utf8")) : {};
-  printSummary(await writeReports(dir, records), { trials: meta.trials });
+  output(await writeReports(dir, records), meta.trials);
 }
 
 try {

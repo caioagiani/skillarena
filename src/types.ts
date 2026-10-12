@@ -80,6 +80,10 @@ export interface AgentRunResult {
   loadedPlugins?: { name: string; path: string }[];
   /** Builtin plugins the agent reported as active. */
   builtinPlugins?: string[];
+  /** Skills the agent invoked through its Skill tool, e.g. "superpowers:systematic-debugging". */
+  skillCalls?: string[];
+  /** Hooks that fired (e.g. "SessionStart:startup"). Isolated configs have none of their own. */
+  hooks?: string[];
 }
 
 export interface Agent {
@@ -143,6 +147,10 @@ export interface TrialRecord {
   error?: string;
   /** Non-builtin plugins the agent loaded during the trial. */
   plugins: string[];
+  skillCalls: string[];
+  hooks: string[];
+  /** Did the skill visibly do anything (skill invoked or hook fired)? null when not observable. */
+  skillUsed: boolean | null;
   transcript: string;
   finalMessage: string;
 }

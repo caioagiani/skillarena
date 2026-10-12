@@ -9,6 +9,7 @@ import { heuristicClaims, ranTests } from "../dist/honesty.js";
 import { detectInstall, parseSkillArg } from "../dist/skills.js";
 import { bootstrapDelta, wilson } from "../dist/stats.js";
 import { parseTestCounts } from "../dist/tasks.js";
+import { skillUsed } from "../dist/runner.js";
 
 const meta = { timedOut: false, exitCode: 0, durationMs: 1000, stderr: "" };
 
@@ -106,4 +107,26 @@ test("stats", () => {
   const d = bootstrapDelta(new Map([["a", [1, 0]], ["b", [1, 0]], ["c", [1, 0]]]));
   assert.equal(d.delta, 1);
   assert.equal(d.lo, 1);
+});
+
+test("tracks skill invocations, hooks and whether the skill was used", () => {
+  const lines = [
+    { type: "system", subtype: "hook_response", hook_name: "SessionStart:startup" },
+    { type: "assistant", message: { content: [{ type: "tool_use", name: "Skill", input: { skill: "superpowers:systematic-debugging" } }] } },
+    { type: "result", result: "ok" },
+  ];
+  const r = parseStream(lines.map((l) => JSON.stringify(l)).join("\n"), meta);
+  assert.deepEqual(r.hooks, ["SessionStart:startup"]);
+  assert.deepEqual(r.skillCalls, ["superpowers:systematic-debugging"]);
+
+  const plugin = { id: "sp", install: { type: "plugin" }, dir: "/s/sp" };
+  const loaded = [{ name: "superpowers", path: "/s/sp" }];
+  assert.equal(skillUsed(plugin, { skillCalls: [], hooks: ["SessionStart:startup"], loadedPlugins: loaded }), false);
+  assert.equal(skillUsed(plugin, { skillCalls: [], hooks: ["PostToolUse:Edit"], loadedPlugins: loaded }), true);
+  assert.equal(skillUsed(plugin, { skillCalls: ["superpowers:tdd"], hooks: [], loadedPlugins: loaded }), true);
+  assert.equal(skillUsed(plugin, { skillCalls: ["deep-research"], hooks: [], loadedPlugins: loaded }), false);
+  const builtin = { id: "ysk", install: { type: "builtin", plugin: "you-should-know@builtin" }, dir: null };
+  assert.equal(skillUsed(builtin, { skillCalls: ["you-should-know:tip"], hooks: [] }), true);
+  assert.equal(skillUsed({ id: "k", install: { type: "instructions", path: "CLAUDE.md" } }, { skillCalls: [], hooks: [] }), null);
+  assert.equal(skillUsed({ id: "none", install: null }, { skillCalls: [], hooks: [] }), null);
 });

@@ -1,10 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Judge } from "./honesty.js";
 import { ranTests } from "./honesty.js";
 import { commitBase, copyFixture, diffStats, grade } from "./tasks.js";
-import type { Agent, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
+import type { Agent, AgentRunResult, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
 import { dim } from "./terminal.js";
 import { log, pool, tmpDir, truncate } from "./util.js";
 
@@ -110,6 +110,31 @@ function checkBuiltins(skill: ResolvedSkill, builtins: string[], active: string[
   return null;
 }
 
+/**
+ * Whether the skill visibly did something in this trial: one of its skills was invoked, or one of its
+ * hooks reacted to the session (isolated configs have no hooks of their own). SessionStart hooks only
+ * inject fixed context, like an instruction file, so they don't count. Instruction files are always
+ * in context and not observable: null.
+ */
+export function skillUsed(skill: ResolvedSkill, res: Pick<AgentRunResult, "skillCalls" | "hooks" | "loadedPlugins">): boolean | null {
+  const install = skill.install;
+  if (!install || install.type === "instructions" || !res.skillCalls) return null;
+  const calls = res.skillCalls;
+  if ((res.hooks ?? []).some((h) => !h.startsWith("SessionStart"))) return true;
+  if (install.type === "builtin") return calls.some((c) => c.startsWith(`${install.plugin.replace(/@builtin$/, "")}:`));
+  if (install.type === "plugin") {
+    const expected = skill.dir ? path.resolve(skill.dir, install.path ?? "") : null;
+    const name = res.loadedPlugins?.find((p) => path.resolve(p.path) === expected)?.name;
+    return name ? calls.some((c) => c.startsWith(`${name}:`)) : calls.length > 0;
+  }
+  if (install.type === "skills-dir") {
+    const dir = skill.dir ? path.join(skill.dir, install.path) : null;
+    const names = install.single || !dir || !existsSync(dir) ? [skill.id] : readdirSync(dir);
+    return calls.some((c) => names.includes(c.split(":").pop()!));
+  }
+  return calls.length > 0;
+}
+
 function rotate<T>(xs: T[], n: number): T[] {
   const k = n % xs.length;
   return [...xs.slice(k), ...xs.slice(0, k)];
@@ -183,6 +208,9 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       timedOut: res.timedOut,
       error: res.error,
       plugins: (res.loadedPlugins ?? []).map((p) => p.name),
+      skillCalls: res.skillCalls ?? [],
+      hooks: res.hooks ?? [],
+      skillUsed: skillUsed(skill, res),
       transcript,
       finalMessage: truncate(res.finalMessage, 4000),
     };
@@ -229,6 +257,9 @@ function errorRecord(o: RunOptions, { skill, task, trial }: Job, error: string):
     timedOut: false,
     error: `harness: ${error}`,
     plugins: [],
+    skillCalls: [],
+    hooks: [],
+    skillUsed: null,
     transcript: "",
     finalMessage: "",
   };
