@@ -1,6 +1,6 @@
 {
   "name": "skillarena",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Benchmark AI coding agent skills, plugins and CLAUDE.md files: run Claude Code, Codex or OpenCode with and without them and measure pass rate, cost, false \"done\" claims and test tampering. Works with any LLM.",
   "type": "module",
   "bin": {

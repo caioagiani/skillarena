@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/caioagiani/skillarena/compare/v0.4.2...v0.5.0) (2026-10-12)
+
+
+### Features
+
+* install whole .claude/ project setups (settings, agents, hooks, commands) ([#12](https://github.com/caioagiani/skillarena/issues/12)) ([57dbbb2](https://github.com/caioagiani/skillarena/commit/57dbbb2981043b76505f77aad8268aa31fa2421a))
+
 ## [0.4.2](https://github.com/caioagiani/skillarena/compare/v0.4.1...v0.4.2) (2026-10-12)
 
 
