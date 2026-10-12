@@ -1,6 +1,6 @@
 {
   "name": "skillarena",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Benchmark whether a skill, plugin or CLAUDE.md actually helps your coding agent. Runs it with and without, in isolated sandboxes, graded by hidden tests.",
   "author": {
     "name": "caioagiani",

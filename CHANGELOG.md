@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/caioagiani/skillarena/compare/v0.4.0...v0.4.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* make the install prompt benchmark the skill the user asked for ([#7](https://github.com/caioagiani/skillarena/issues/7)) ([4bb4acb](https://github.com/caioagiani/skillarena/commit/4bb4acbc303f24a08e05dfc44e1f38fef8a1b81a))
+
 ## [0.4.0](https://github.com/caioagiani/skillarena/compare/v0.3.1...v0.4.0) (2026-10-12)
 
 
