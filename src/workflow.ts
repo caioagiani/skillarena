@@ -54,10 +54,11 @@ export async function callTool(mock: MockModule, runDir: string, tool: string, a
   try {
     if (!t) throw new Error(`unknown tool: ${tool}`);
     rec = { tool, args, ok: true, result: await t.run(structuredClone(args ?? {}), db) };
-    await writeFile(dbFile, JSON.stringify(db, null, 2));
   } catch (err) {
     rec = { tool, args, ok: false, result: err instanceof Error ? err.message : String(err) };
   }
+  // Saved even when the call failed: a mock may count attempts (e.g. "fails twice, then works").
+  await writeFile(dbFile, JSON.stringify(db, null, 2));
   await appendFile(path.join(runDir, "calls.jsonl"), JSON.stringify(rec) + "\n");
   return rec;
 }

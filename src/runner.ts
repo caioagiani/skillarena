@@ -217,7 +217,7 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
     let res = await o.agent.run(input);
     const turns: Turn[] = [{ role: "customer", text: task.prompt.trim() }, { role: "agent", text: res.finalMessage }];
     // Conversation: the simulated customer answers until it's satisfied or the agent runs out of turns.
-    for (let i = 1; chat && !res.error && res.sessionId && i < (task.customer!.maxTurns ?? 6); i++) {
+    for (let i = 1; chat && !res.error && res.sessionId && i < (task.customer!.maxTurns ?? 12); i++) {
       const next = await customerReply(task, turns, o.customer ?? { model: "haiku", isolate: true });
       if (!next) break;
       turns.push({ role: "customer", text: next });

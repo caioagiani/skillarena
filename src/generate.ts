@@ -110,13 +110,18 @@ tasks/<id>/
 task.yaml test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
 
 Hard rules:
-- Use the server and tool names in tools.json when it is not empty: the skill under test expects them.
+- Use the server and tool names in tools.json ("tools") when it is not empty: the skill under test expects them.
+  Implement EVERY tool in tools.json, with realistic results, even if the scenario barely needs it.
   Mocks must accept EVERY input form tools.json lists (e.g. a lookup by tax id, phone or free text) and
   return the fields it lists: the agent may use any of them. Add other tools only if a scenario needs
   them. Descriptions say what a tool does, never the policy.
 - The persona must answer anything a careful agent would reasonably ask (identity, confirmation of the
-  record found, which option they prefer), so a careful agent is never stuck. Tests never depend on how
-  many turns the conversation took.
+  record found, which option they prefer, their phone or e-mail), so a careful agent is never stuck.
+  Tests never depend on how many turns the conversation took. Set maxTurns to 12: careful agents
+  confirm one step at a time.
+- If tools.json comes with a "runtimeContext" list, start the prompt with that context as the runtime
+  would give it (e.g. "[Canal: WhatsApp · Contato: +55 11 98765-4321 · Data: 2026-10-12]"), consistent
+  with the data.
 - Grade outcomes: the right records changed with the right values, the wrong ones untouched, and the
   reply. Use calls.jsonl only for effects that leave no trace in the data (a message sent to the right
   number with the right amount), never for the order or count of read-only calls.
@@ -246,7 +251,7 @@ async function prepareWorkdir(analysis: SkillAnalysis, opts: GenerateOptions): P
     for (const id of WORKFLOW_EXAMPLES) await cp(path.join(examples, id), path.join(work, "examples", id), { recursive: true });
     await writeFile(path.join(work, "FORMAT.md"), WORKFLOW_FORMAT);
     await writeFile(path.join(work, "check.mjs"), CHECK_WORKFLOW(fileURLToPath(new URL("./cli.js", import.meta.url))));
-    await writeFile(path.join(work, "tools.json"), JSON.stringify(analysis.tools ?? [], null, 2));
+    await writeFile(path.join(work, "tools.json"), JSON.stringify({ tools: analysis.tools ?? [], runtimeContext: analysis.runtimeContext ?? [] }, null, 2));
   } else {
     for (const id of EXAMPLES) await cp(path.join(opts.builtinTasksDir, id), path.join(work, "examples", id), { recursive: true });
     await writeFile(path.join(work, "FORMAT.md"), FORMAT);

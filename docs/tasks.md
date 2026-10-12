@@ -1,7 +1,8 @@
 # Task suite
 
 This page documents the **built-in** suite (`--suite builtin`). By default skillarena also writes
-tasks for each skill it measures; those follow the same format and checks and are cached under
+tasks for each skill it measures (coding tasks, or `workflow` tasks with mock MCP tools for support
+and ops skills, see [`examples/tasks/support-due-date`](../examples/tasks/support-due-date)); those follow the same checks and are cached under
 `~/.cache/skillarena/generated/` (see the [README](../README.md#tasks-written-for-your-skill-automatically)).
 
 Every task is a small JavaScript repo (Node ≥ 22, no dependencies). The agent gets the repo and a

@@ -5,7 +5,8 @@ description: Benchmark whether an agent skill, plugin or CLAUDE.md file actually
 
 # skillarena
 
-skillarena reads the skill, writes tasks for its domain (validated, fairness-reviewed and calibrated
+skillarena reads the skill, writes tasks for its domain (code changes, or support/ops workflows with
+mock tools; validated, fairness-reviewed and calibrated
 on the bare agent, cached per skill version), then runs a coding agent headless on them, with and without the skill, in
 throwaway workspaces and config dirs, and grades every attempt with hidden tests. It reports the
 pass rate difference with a confidence interval, cost, false "done" claims, test tampering and
@@ -51,8 +52,10 @@ An interrupted run resumes with `--run-id <id>`.
 - If the baseline already passes ~100%, pass rate can't improve. Compare cost, tokens, churn and
   false "done" instead. Generated tasks are already calibrated: ones the baseline always solved were
   made harder.
-- If skillarena says the skill is a support/ops/writing skill, it used the built-in coding suite.
-  Say so: that suite can't show whether such a skill helps in its own domain.
+- Support and ops skills get workflow tasks: a conversation with a simulated customer, policy docs
+  and mock tools with the names the skill uses. They need `--agent claude-code`. If skillarena says it fell back to the
+  built-in coding suite (e.g. a writing skill, or another agent), say so: that suite can't show
+  whether such a skill helps in its own domain.
 - `skill used 0%` means the skill never triggered during the tasks. That is often the real finding.
 - Every transcript is in `results/<run-id>/transcripts/`. Open a few before concluding anything.
 

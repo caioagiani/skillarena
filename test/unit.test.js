@@ -210,3 +210,14 @@ test("workflow tasks validate by replaying the reference calls", async () => {
   assert.ok(v.before.failed > 0);
   assert.equal(v.after.failed, 0);
 });
+
+test("mock state changes survive a failing call", async () => {
+  const { callTool } = await import("../dist/workflow.js");
+  const { readFileSync } = await import("node:fs");
+  const run = mkdtempSync(path.join(os.tmpdir(), "sa-flaky-"));
+  writeFileSync(path.join(run, "db.json"), JSON.stringify({ left: 1 }));
+  const mock = { server: "x", tools: [{ name: "t", run: (_, db) => { if (db.left > 0) { db.left--; throw new Error("503"); } return "ok"; } }] };
+  assert.equal((await callTool(mock, run, "t", {})).ok, false);
+  assert.equal((await callTool(mock, run, "t", {})).ok, true);
+  assert.equal(JSON.parse(readFileSync(path.join(run, "db.json"), "utf8")).left, 0);
+});

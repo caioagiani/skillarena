@@ -28,6 +28,8 @@ export interface SkillAnalysis {
   promises: string[];
   /** tool-workflow skills: the tools it expects (names as the skill writes them), so mocks can match. */
   tools?: { server: string; name: string; description: string; inputs?: string; returns?: string }[];
+  /** tool-workflow skills: what the runtime normally gives the agent (channel, the contact's phone...). */
+  runtimeContext?: string[];
   scenarios: Scenario[];
 }
 
@@ -96,6 +98,8 @@ Read the skill files below and reply with ONLY a JSON object:
       "returns": string }         // the fields the skill reads from its result
                                   // MCP tools appear as mcp__<server>__<name>; keep the skill's exact names
   ],
+  "runtimeContext": string[],     // tool-workflow only: what the skill expects the runtime to provide in each
+                                  // conversation (channel, the contact's phone number, current date...), [] otherwise
   "scenarios": [                  // 8 realistic requests in this skill's domain
     { "title": string, "request": string, "whySkillMatters": string, "verifiableOutcome": string }
   ]
