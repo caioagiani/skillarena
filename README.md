@@ -80,6 +80,7 @@ Needs Node ≥ 22 and the agent you want to test ([Claude Code](https://docs.cla
 [OpenCode](https://opencode.ai) or [Codex](https://github.com/openai/codex)).
 
 ```bash
+npx skillarena doctor                        # checks Node, agent CLIs and credentials
 npx skillarena login                         # Claude subscription (or: login ANTHROPIC_API_KEY)
 npx skillarena obra/superpowers              # one skill vs baseline
 npx skillarena karpathy ponytail --trials 5  # several skills at once

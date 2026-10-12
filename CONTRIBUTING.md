@@ -24,6 +24,10 @@ Rules of thumb:
 - `npm run build && node dist/cli.js validate` must show ✓: the fixture fails and the solution passes.
 - Run `npx skillarena calibrate` and include the baseline pass rate in your PR. Tasks the baseline
   solves 100% of the time can't show a skill's effect.
+- Document it in [docs/tasks.md](docs/tasks.md): the prompt, what the hidden suite checks, why it's hard.
+
+You don't need a PR to use your own tasks: `npx skillarena <skill> --tasks-dir ./my-tasks` runs any
+folder with this layout, and `npx skillarena validate --tasks-dir ./my-tasks` checks it.
 
 ## Add an agent
 
