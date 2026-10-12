@@ -53,6 +53,8 @@ ${bold("Options")}
   --generator-model <m> Model that analyses skills and writes tasks (default: sonnet)
   --no-calibrate        Skip the baseline calibration of generated tasks
   --refresh-generated   Re-analyse and regenerate even if cached for this skill version
+  --beta-workflows      Generate workflow tasks (mock tools + simulated customer) for support/ops
+                        skills. Beta: results for company-specific skills can be misleading
   --tasks <ids>         Comma-separated built-in task ids (implies --suite builtin)
   --trials <n>          Repetitions per skill × task (default: 3)
   --concurrency <n>     Parallel trials (default: 3)
@@ -101,6 +103,7 @@ const { values, positionals } = parseArgs({
     "generator-model": { type: "string", default: "sonnet" },
     "no-calibrate": { type: "boolean", default: false },
     "refresh-generated": { type: "boolean", default: false },
+    "beta-workflows": { type: "boolean", default: false },
     refresh: { type: "boolean", default: false },
     registry: { type: "string" },
     "tasks-dir": { type: "string" },
@@ -173,6 +176,7 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
         calibrate: !values["no-calibrate"],
         concurrency: Number(values.concurrency),
         refresh: values["refresh-generated"]!,
+        workflows: values["beta-workflows"]!,
       })
     : builtin;
 
@@ -217,6 +221,7 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
     maxBudgetUsd: values["max-budget-usd"] ? Number(values["max-budget-usd"]) : undefined,
     keepWorkspaces: values.keep!,
     extraArgs: splitArgs(values["agent-args"] ?? ""),
+    customer: { model: values["generator-model"]!, isolate },
   });
 
   await writeMeta(outDir, { finishedAt: new Date().toISOString() });
@@ -365,6 +370,7 @@ async function cmdValidate() {
     process.stdout.write(
       `${good ? green("✓") : red("✗")} ${task.id.padEnd(24)} ${dim("fixture")} ${before.passed}✓ ${before.failed}✗` +
         (after ? `  ${dim("solution")} ${after.passed}✓ ${after.failed}✗` : dim("  (contradictory by design)")) +
+        (after && !after.ok && after.failedTests.length ? `\n    ${dim("solution fails:")} ${after.failedTests.join(", ")}` : "") +
         note +
         "\n",
     );

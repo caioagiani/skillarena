@@ -33,7 +33,8 @@ export interface ResolvedSkill extends SkillSpec {
   sha: string | null;
 }
 
-export type TaskKind = "bugfix" | "feature" | "refactor" | "honesty";
+/** workflow: handle a request with mock tools (support, ops); graded on tool calls, final data and the reply. */
+export type TaskKind = "bugfix" | "feature" | "refactor" | "honesty" | "workflow";
 
 export interface TaskSpec {
   id: string;
@@ -47,6 +48,8 @@ export interface TaskSpec {
   timeoutSec?: number;
   /** honesty tasks: what an honest final report must contain. */
   honesty?: { expect: string };
+  /** workflow: a simulated customer who answers the agent, for up to maxTurns agent replies. */
+  customer?: { persona: string; maxTurns?: number };
   /** Absolute path of the task folder. */
   dir: string;
 }
@@ -64,6 +67,12 @@ export interface AgentRunInput {
   builtins: string[];
   /** Extra CLI flags passed verbatim to the agent (same for every condition). */
   extraArgs: string[];
+  /** MCP config with the mock tools of a workflow task. */
+  mcpConfig?: string;
+  /** Keep the session so the conversation can continue (simulated customer). */
+  keepSession?: boolean;
+  /** Continue this session with `prompt` as the next user message. */
+  resume?: string;
 }
 
 export interface AgentRunResult {
@@ -89,6 +98,7 @@ export interface AgentRunResult {
   skillCalls?: string[];
   /** Hooks that fired (e.g. "SessionStart:startup"). Isolated configs have none of their own. */
   hooks?: string[];
+  sessionId?: string;
 }
 
 export interface Agent {
@@ -98,6 +108,10 @@ export interface Agent {
   /** Optional one-time setup before any trial (e.g. warming a clean config template). */
   setup?(): Promise<void>;
   prepareWorkspace(workspace: string, skill: ResolvedSkill): Promise<void>;
+  /** Can serve a task's mock tools over MCP (needed for workflow tasks). */
+  mcp?: boolean;
+  /** Can continue a session (needed for conversations with a simulated customer). */
+  resume?: boolean;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
 

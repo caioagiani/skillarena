@@ -1,0 +1,12 @@
+{
+  "customers": [
+    { "id": "c1", "name": "Maria Souza", "tax_id": "12345678909" },
+    { "id": "c2", "name": "Maria Souza Lima", "tax_id": "98765432100" }
+  ],
+  "invoices": [
+    { "id": "i10", "customer_id": "c1", "month": "2026-10", "status": "paid", "original_due_date": "2026-10-10", "due_date": "2026-10-10", "due_date_changes": 0 },
+    { "id": "i11", "customer_id": "c1", "month": "2026-11", "status": "open", "original_due_date": "2026-11-10", "due_date": "2026-11-10", "due_date_changes": 0 },
+    { "id": "i12", "customer_id": "c1", "month": "2026-12", "status": "open", "original_due_date": "2026-12-05", "due_date": "2026-12-10", "due_date_changes": 1 },
+    { "id": "i21", "customer_id": "c2", "month": "2026-11", "status": "open", "original_due_date": "2026-11-10", "due_date": "2026-11-10", "due_date_changes": 0 }
+  ]
+}

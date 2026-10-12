@@ -98,26 +98,34 @@ npx skillarena cc-plugin-you-should-know@builtin   # builtin plugins: enabled on
 
 ### Tasks written for your skill, automatically
 
-With no `--tasks` flag, skillarena first reads the skill and writes tasks for its domain:
+With no `--tasks` flag, skillarena first reads the skill and writes tasks for its domain. A coding
+skill gets small repos to fix or extend. A **support or ops skill** (billing, collections, triage)
+can get workflow tasks with `--beta-workflows`: a customer conversation, the company's policy docs, and **mock tools served
+over MCP** with the names and inputs the skill expects. A **simulated customer** answers the agent's
+questions (identity, confirmations, choices). Tasks are graded on the final data, the effects of the
+calls (what changed, what was sent) and the facts the customer was told.
 
 1. **Understand.** A model reads the skill's files (SKILL.md, CLAUDE.md, agents, commands, hooks) and
-   lists what it promises and eight realistic requests where that should matter.
-2. **Generate.** One agent per scenario builds a small repo, a weak visible test, a strict hidden
-   suite and a reference solution. It sees the scenarios, never the skill text, so tasks don't
-   reward copying the skill's procedure.
+   lists its domain, what it promises, the tools it uses, and eight realistic requests where that should matter.
+2. **Generate.** One agent per scenario builds the task (a repo or mock tools and data), a strict
+   hidden suite and a reference solution. It sees the scenarios, never the skill text, so tasks don't
+   reward copying the skill's procedure. For support skills it also gets the business rules the skill
+   imposes, written into the task's policy docs so both agents can follow them and no test contradicts them.
 3. **Validate.** The fixture must fail the hidden suite and the solution must pass it.
 4. **Fairness review.** An independent reviewer gets the request, the repo and the hidden tests, and
    rejects tests a careful engineer couldn't anticipate: undocumented behaviour, changes outside the
    requested scope, trick inputs. Flagged tasks get one repair round, then are dropped.
-5. **Calibrate.** The bare agent runs each task twice. Tasks it always solves are made harder (and
-   reviewed again), so the suite has room to show an effect.
+5. **Calibrate.** The bare agent runs each task twice. Tasks it always solves are made harder, guided
+   by how it solved them. Tasks it never solves are reviewed again with its failed attempts as
+   evidence, and repaired or dropped if the failure was the task's fault.
 6. **Cache.** Everything is stored under `~/.cache/skillarena/generated/<skill>@<commit>` and reused.
    Local skills are keyed by content hash, so editing your skill regenerates its tasks.
 
-The built-in honesty task (`slugify-conflict`) always runs alongside. Generation uses your Claude
+The built-in honesty task (`slugify-conflict`) runs alongside coding tasks. Generation uses your Claude
 login (`--generator-model`, default `sonnet`). `--suite builtin` skips it, `--refresh-generated`
 redoes it, `--generate-count` sets how many tasks, `--no-calibrate` skips calibration.
-Skills that aren't about writing code (support, ops, writing) currently fall back to the built-in suite.
+Workflow tasks need Claude Code as the agent. Without `--beta-workflows`, and for writing-only
+skills, the built-in suite is used.
 
 Results land in `results/<run-id>/`: a terminal summary, `index.html`, `report.md`, raw
 `results.jsonl` and the full agent transcript of every trial.
@@ -239,7 +247,7 @@ Open a PR adding it to [`skills/registry.yaml`](skills/registry.yaml), or
 | | skillarena | [Caliper](https://github.com/edonadei/caliper) | [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals) | [skill-creator](https://github.com/anthropics/skills) benchmark | [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
 |---|---|---|---|---|---|
 | Question it answers | Does this skill help on real coding tasks? | Does my skill trigger and do its job? | Does my plugin pass my eval cases? | Does my skill beat no skill on my prompts? | Do skills help models in general? |
-| Test cases | Generated from the skill, validated, fairness-reviewed and calibrated · built-in suite · your own | You write them | You write them (`init` drafts) | You write them | 86 fixed tasks |
+| Test cases | Generated from the skill (code or mock-tool workflows), validated, fairness-reviewed and calibrated · built-in suite · your own | You write them | You write them (`init` drafts) | You write them | 86 fixed tasks |
 | Grading | Hidden tests, files restored | LLM judge + Python asserts | regex, tool use, files, LLM | Assertions | Deterministic verifiers |
 | False “done”, tampering, honesty | Yes | No | No | No | No |
 | Statistics | Paired bootstrap CI over tasks | pass@k | Mean Δ (3 runs) | Mean ± sd | Pass rate |
@@ -256,7 +264,7 @@ on the right prompts and does the specific thing it promises, which a general ta
 
 **Current limitations** (and what we're doing about them):
 
-- **Generated tasks are small.** They're single-repo Node.js tasks written by a model. Validation,
+- **Generated tasks are small.** They're single-repo Node.js tasks or single-message workflows written by a model. Validation,
   a fairness review and calibration keep them honest, but they are not real-world repositories.
   A pack built on real repositories is next.
 - **Generation needs Claude.** Analysis, generation and review run on Claude Code (your login), even
@@ -267,8 +275,13 @@ on the right prompts and does the specific thing it promises, which a general ta
   models our test machine can run didn't finish a task, so there is no graded Codex result yet.
   Claude Code and OpenCode have graded runs.
 - **No container sandbox.** Trials run in temp directories with permissions bypassed. Use CI or a VM.
-- **Coding skills only, for now.** Support, ops and other tool-driven skills fall back to the
-  built-in suite. Generated conversation tasks (mock tools + simulated user) are next.
+- **Workflow tasks are beta.** On a company-specific support skill (strict scripts, its own business
+  rules) generated tasks still graded the skill for diverging from the policy the generator wrote,
+  so it scored far below the bare agent for reasons that weren't the skill's fault. Read the
+  transcripts before trusting a workflow result. For such skills, hand-written tasks are safer.
+- **The simulated customer is a model.** It only knows its persona and answers what it is asked, but
+  it is not a real person. Workflow tasks need Claude Code as the agent (mock tools over MCP and
+  session resume).
 
 ## FAQ
 
@@ -284,9 +297,11 @@ still doesn't change the pass rate but adds 20% cost, you know what it buys you.
 **How much does a run cost?** About `skills × tasks × trials` agent sessions. Use `--max-budget-usd`
 per trial, `--tasks` to narrow the suite, and `--trials 1` while exploring.
 
-**Can I benchmark a non-coding agent?** Not automatically yet: skillarena detects support, ops or
-writing skills and tells you. Generated conversation tasks are on the roadmap. Meanwhile bring tasks
-from its own domain with `--tasks-dir`: any task whose outcome a script can check works.
+**Can I benchmark a support or ops agent?** In beta: `npx skillarena <skill> --beta-workflows`. It detects tool-driven
+skills, mocks the tools they use (same names and inputs), writes policy docs and data, and has a
+simulated customer chat with the agent. Grading looks at what changed in the data and what the
+customer was told. You can also write your own
+workflow tasks ([format](CONTRIBUTING.md#workflow-tasks-support-ops)).
 
 **Is it safe?** Agents run with permission prompts bypassed inside temp directories. Run it on a machine
 you're comfortable with that on, in a container, or in CI.
@@ -295,7 +310,8 @@ you're comfortable with that on, in a container, or in CI.
 
 - [ ] Public leaderboard site, refreshed weekly
 - [x] Tasks generated from each skill, validated, fairness-reviewed and calibrated
-- [ ] Generated tasks for tool-driven skills (support, ops): mock tools + simulated user
+- [x] Workflow tasks for tool-driven skills (support, ops): mock MCP tools + simulated customer (beta)
+- [ ] Generated workflow tasks reliable enough to be on by default
 - [ ] Real-world task pack (SWE-bench Lite / Terminal-Bench adapter) so frontier models don't saturate
 - [ ] Import `claude plugin eval` and skill-creator eval cases
 - [ ] Python, TypeScript and Go task packs

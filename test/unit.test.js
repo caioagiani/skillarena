@@ -168,3 +168,63 @@ test("cache key follows the skill version", async () => {
   assert.equal(a, skillKey({ id: "local", sha: "local" }, "v1"));
   assert.notEqual(skillKey({ id: "mine", repo: "/x/mine", sha: "bb92a77741419a4ab5f06e711a283343f1ada0c3" }, "v1"), "mine@bb92a7774141");
 });
+
+test("mock MCP server lists tools, runs calls and records them", async () => {
+  const { spawn } = await import("node:child_process");
+  const { readFileSync, cpSync } = await import("node:fs");
+  const task = path.resolve("examples/tasks/support-due-date");
+  const run = mkdtempSync(path.join(os.tmpdir(), "sa-mock-"));
+  cpSync(path.join(task, "mock", "db.json"), path.join(run, "db.json"));
+  const p = spawn(process.execPath, ["dist/mock-mcp.js", path.join(task, "mock"), run]);
+  const replies = [];
+  let buf = "";
+  p.stdout.on("data", (c) => {
+    buf += c;
+    for (let i; (i = buf.indexOf("\n")) >= 0; buf = buf.slice(i + 1)) replies.push(JSON.parse(buf.slice(0, i)));
+  });
+  const send = (m) => p.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+  send({ id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } });
+  send({ method: "notifications/initialized" });
+  send({ id: 2, method: "tools/list" });
+  send({ id: 3, method: "tools/call", params: { name: "change_due_date", arguments: { invoice_id: "i11", new_due_date: "2026-11-20" } } });
+  send({ id: 4, method: "tools/call", params: { name: "find_customer", arguments: { tax_id: "000" } } });
+  for (let t = 0; replies.length < 4 && t < 100; t++) await new Promise((r) => setTimeout(r, 50));
+  p.kill();
+  const byId = Object.fromEntries(replies.map((r) => [r.id, r]));
+  assert.equal(byId[1].result.serverInfo.name, "billing");
+  assert.deepEqual(byId[2].result.tools.map((t) => t.name), ["find_customer", "list_invoices", "change_due_date"]);
+  assert.equal(byId[3].result.isError, false);
+  assert.equal(byId[4].result.isError, true);
+  const db = JSON.parse(readFileSync(path.join(run, "db.json"), "utf8"));
+  assert.equal(db.invoices.find((i) => i.id === "i11").due_date, "2026-11-20");
+  const calls = readFileSync(path.join(run, "calls.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(calls.map((c) => [c.tool, c.ok]), [["change_due_date", true], ["find_customer", false]]);
+});
+
+test("workflow tasks validate by replaying the reference calls", async () => {
+  const { loadTasks, validateTask } = await import("../dist/tasks.js");
+  delete process.env.NODE_TEST_CONTEXT; // the hidden suite is itself a node:test run
+  const [task] = await loadTasks(path.resolve("examples/tasks"));
+  const v = await validateTask(task);
+  assert.equal(v.ok, true);
+  assert.ok(v.before.failed > 0);
+  assert.equal(v.after.failed, 0);
+});
+
+test("mock state changes survive a failing call", async () => {
+  const { callTool } = await import("../dist/workflow.js");
+  const { readFileSync } = await import("node:fs");
+  const run = mkdtempSync(path.join(os.tmpdir(), "sa-flaky-"));
+  writeFileSync(path.join(run, "db.json"), JSON.stringify({ left: 1 }));
+  const mock = { server: "x", tools: [{ name: "t", run: (_, db) => { if (db.left > 0) { db.left--; throw new Error("503"); } return "ok"; } }] };
+  assert.equal((await callTool(mock, run, "t", {})).ok, false);
+  assert.equal((await callTool(mock, run, "t", {})).ok, true);
+  assert.equal(JSON.parse(readFileSync(path.join(run, "db.json"), "utf8")).left, 0);
+});
+
+test("recognises quota errors", async () => {
+  const { isQuotaError } = await import("../dist/util.js");
+  assert.ok(isQuotaError("agent error: success You've hit your session limit · resets 4pm"));
+  assert.ok(isQuotaError("Claude AI usage limit reached"));
+  assert.ok(!isQuotaError("hidden tests failed: limit of 3 retries"));
+});

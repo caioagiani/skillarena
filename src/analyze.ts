@@ -26,6 +26,12 @@ export interface SkillAnalysis {
   languages: string[];
   triggers: string[];
   promises: string[];
+  /** tool-workflow skills: the tools it expects (names as the skill writes them), so mocks can match. */
+  tools?: { server: string; name: string; description: string; inputs?: string; returns?: string }[];
+  /** tool-workflow skills: business rules the skill imposes; generated policies must agree with them. */
+  rules?: string[];
+  /** tool-workflow skills: what the runtime normally gives the agent (channel, the contact's phone...). */
+  runtimeContext?: string[];
   scenarios: Scenario[];
 }
 
@@ -88,6 +94,16 @@ Read the skill files below and reply with ONLY a JSON object:
   "languages": string[],          // programming languages or stacks it targets, [] if generic
   "triggers": string[],           // situations in which it is supposed to activate
   "promises": string[],           // concrete improvements it claims (fewer bugs, verification, smaller diffs...)
+  "tools": [                      // tool-workflow only: tools/APIs the skill tells the agent to use, [] otherwise
+    { "server": string, "name": string, "description": string,
+      "inputs": string,           // every way the skill calls it: argument names and forms (CPF, phone, free text...)
+      "returns": string }         // the fields the skill reads from its result
+                                  // MCP tools appear as mcp__<server>__<name>; keep the skill's exact names
+  ],
+  "rules": string[],              // tool-workflow only: every concrete business rule the skill imposes (what it may
+                                  // or may not do, when to refuse, what to confirm, formats, limits), one per item
+  "runtimeContext": string[],     // tool-workflow only: what the skill expects the runtime to provide in each
+                                  // conversation (channel, the contact's phone number, current date...), [] otherwise
   "scenarios": [                  // 8 realistic requests in this skill's domain
     { "title": string, "request": string, "whySkillMatters": string, "verifiableOutcome": string }
   ]
@@ -100,6 +116,10 @@ Rules for scenarios:
   NOT by whether the agent followed the skill's procedure. Correctness comes from the request itself.
 - For coding skills, scenarios must be doable in a small self-contained Node.js (ESM, no dependencies)
   repository, whatever stack the skill targets, so they can run anywhere.
+- For tool-workflow skills, each "request" is the first message from the customer or operator the agent
+  serves, in the language the skill uses. The conversation can continue: a simulated customer answers
+  the agent's questions (confirmations, choices, missing data). The agent works through the skill's tools (mocked), and
+  "verifiableOutcome" is checked on the final data, the tool calls that changed it, and the reply.
 
 <skill>
 ${text}

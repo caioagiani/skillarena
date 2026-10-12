@@ -4,6 +4,7 @@ import path from "node:path";
 import YAML from "yaml";
 import type { TaskSpec } from "./types.js";
 import { exec, matchesAny, sh, tmpDir } from "./util.js";
+import { replayInto, RUN_DIR } from "./workflow.js";
 
 export const HIDDEN_DIR = ".skillarena-hidden";
 
@@ -51,7 +52,7 @@ export interface DiffStats {
   changedFiles: string[];
 }
 
-const IGNORED_CHANGES = [".claude/**", ".codex/**", ".agents/**", "node_modules/**", "**/.DS_Store"];
+const IGNORED_CHANGES = [`${RUN_DIR}/**`, ".claude/**", ".codex/**", ".agents/**", "node_modules/**", "**/.DS_Store"];
 
 export async function diffStats(workspace: string, base: string): Promise<DiffStats> {
   await git(["add", "-A"], workspace);
@@ -125,7 +126,7 @@ export interface Validation {
   ok: boolean;
   /** failedTests: names of hidden tests the untouched fixture fails (what the agent has to change). */
   before: { ok: boolean; passed: number; failed: number; failedTests: string[] };
-  after: { ok: boolean; passed: number; failed: number } | null;
+  after: { ok: boolean; passed: number; failed: number; failedTests: string[] } | null;
 }
 
 /**
@@ -137,7 +138,8 @@ export async function validateTask(task: TaskSpec): Promise<Validation> {
     const ws = await tmpDir("validate");
     try {
       await copyFixture(task, ws);
-      if (withSolution) await cp(path.join(task.dir, "solution"), ws, { recursive: true, force: true });
+      if (task.kind === "workflow") await replayInto(task, ws, withSolution);
+      else if (withSolution) await cp(path.join(task.dir, "solution"), ws, { recursive: true, force: true });
       const hidden = path.join(task.dir, "hidden");
       if (existsSync(hidden)) await cp(hidden, path.join(ws, HIDDEN_DIR), { recursive: true });
       const r = await sh(task.test, { cwd: ws, timeoutSec: 120 });

@@ -1,0 +1,5 @@
+[
+  { "tool": "find_customer", "args": { "tax_id": "123.456.789-09" } },
+  { "tool": "list_invoices", "args": { "customer_id": "c1" } },
+  { "tool": "change_due_date", "args": { "invoice_id": "i11", "new_due_date": "2026-11-20" } }
+]

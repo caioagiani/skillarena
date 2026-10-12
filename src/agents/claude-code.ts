@@ -52,6 +52,9 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       if (r.code !== 0) log.warn(`config warm-up failed (exit ${r.code}); trials start from a cold config`);
     },
 
+    mcp: true,
+    resume: true,
+
     prepareWorkspace(workspace: string, skill: ResolvedSkill) {
       return installSkill(workspace, skill, { instructionsFile: "CLAUDE.md", skillsDir: ".claude/skills", plugins: "native" });
     },
@@ -64,11 +67,14 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
         "stream-json",
         "--verbose",
         "--dangerously-skip-permissions",
-        "--no-session-persistence",
         "--include-hook-events",
       ];
+      if (input.resume) args.push("--resume", input.resume);
+      else if (!input.keepSession) args.push("--no-session-persistence");
       if (input.model) args.push("--model", input.model);
       args.push(...input.extraArgs);
+      // Only the task's mock tools: a real MCP server from the skill must never be reached.
+      if (input.mcpConfig) args.push("--mcp-config", input.mcpConfig, "--strict-mcp-config");
       if (input.maxBudgetUsd && !thirdParty) args.push("--max-budget-usd", String(input.maxBudgetUsd));
       if (input.skill.install?.type === "plugin" && input.skill.dir) {
         args.push("--plugin-dir", path.join(input.skill.dir, input.skill.install.path ?? ""));
@@ -82,14 +88,14 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
       const env: NodeJS.ProcessEnv = { ...process.env, DISABLE_AUTOUPDATER: "1" };
       if (opts.isolate) {
         env.CLAUDE_CONFIG_DIR = input.configDir;
-        if (template) {
+        if (template && !input.resume) {
           const skip = new Set(["projects", "sessions", "backups", "file-history", "todos", "shell-snapshots"]);
           await cp(template, input.configDir, { recursive: true, filter: (f) => !skip.has(path.relative(template!, f).split(path.sep)[0]) });
         }
       }
       Object.assign(env, providerEnv());
 
-      const transcript = createWriteStream(input.transcriptPath);
+      const transcript = createWriteStream(input.transcriptPath, { flags: input.resume ? "a" : "w" });
       const r = await exec("claude", args, {
         cwd: input.workspace,
         env,
@@ -150,6 +156,7 @@ export function parseStream(stdout: string, meta: StreamMeta): AgentRunResult {
     }
     if (ev.type === "system" && ev.subtype === "init") {
       if (ev.model) out.model = ev.model;
+      if (ev.session_id) out.sessionId = ev.session_id;
       if (Array.isArray(ev.plugins)) {
         out.loadedPlugins = ev.plugins.filter((p: any) => p.path && p.path !== "builtin").map((p: any) => ({ name: p.name, path: p.path }));
         out.builtinPlugins = ev.plugins.filter((p: any) => p.path === "builtin").map((p: any) => String(p.name));

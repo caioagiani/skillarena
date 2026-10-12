@@ -2,10 +2,11 @@ import { createWriteStream, existsSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import YAML from "yaml";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { generatedDir, type Scenario, type SkillAnalysis } from "./analyze.js";
 import { loadTasks, validateTask } from "./tasks.js";
 import type { TaskSpec } from "./types.js";
-import { exec, log, pool, tmpDir } from "./util.js";
+import { exec, isQuotaError, log, pool, QuotaError, tmpDir } from "./util.js";
 import { dim } from "./terminal.js";
 
 /** Built-in tasks shown to the generator as the format and quality bar. */
@@ -72,6 +73,116 @@ export default function (dir) {
 }
 `;
 
+/** Shown to the generator for workflow tasks (tool-using skills: support, ops). */
+const WORKFLOW_EXAMPLES = ["support-due-date"];
+
+const WORKFLOW_FORMAT = `# Workflow task format
+
+The agent under test handles a conversation with a customer (or an operator) using mock tools served
+over MCP. The task prompt is the first message. A simulated customer, played by a model from the
+persona in task.yaml, answers the agent's questions until the request is handled. It sees the message (task.yaml prompt), the files in repo/ (policies, procedures,
+price tables: what a person in that job would have), and the tools' names, descriptions and results.
+It never sees mock/, hidden/ or solution/.
+
+tasks/<id>/
+  task.yaml        id, title, kind: workflow, prompt, test, protected: [], timeoutSec: 900, and
+                     customer:
+                       persona: |   who the customer is, every fact they know (ids, unit, dates, preferences),
+                                    what they want, and how they answer (e.g. confirms the unit when asked)
+                       maxTurns: 6  agent replies allowed
+  repo/            documents the agent can read, e.g. POLICY.md. Every rule the hidden tests rely on must
+                   be written here, in the prompt, or be visible in tool descriptions or results.
+  mock/tools.mjs   export const server = "<name>";
+                   export const tools = [{ name, description, inputSchema, run(args, db) }]
+                   run() reads and mutates db (parsed db.json) and returns a JSON-able result, or throws an
+                   Error whose message the agent sees. Mocks behave like the real backend: they do NOT
+                   enforce business policy unless the real system would.
+  mock/db.json     initial data: realistic, with near-misses (similar names, other customers, closed records).
+  hidden/*.test.js node:test suite. It reads what happened from the workspace:
+                     .skillarena-run/db.json      final data
+                     .skillarena-run/calls.jsonl  one {tool, args, ok, result} per call, in order
+                     .skillarena-run/reply.md     every agent message of the conversation, separated by ---
+                     .skillarena-run/conversation.json  [{ role: "customer" | "agent", text }]
+                   Keep a copy of the initial data in hidden/ if a test compares against it.
+  solution/calls.json  reference tool calls: [{ "tool": "...", "args": { ... } }]
+  solution/reply.md    the reference agent messages (what a good agent tells the customer overall)
+
+task.yaml test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+
+Hard rules:
+- Use the server and tool names in tools.json ("tools") when it is not empty: the skill under test expects them.
+  Implement EVERY tool in tools.json, with realistic results, even if the scenario barely needs it.
+  Mocks must accept EVERY input form tools.json lists (e.g. a lookup by tax id, phone or free text) and
+  return the fields it lists: the agent may use any of them. Add other tools only if a scenario needs
+  them. Descriptions say what a tool does, never the policy.
+- The persona must answer anything a careful agent would reasonably ask (identity, confirmation of the
+  record found, which option they prefer, their phone or e-mail), so a careful agent is never stuck.
+  Tests never depend on how many turns the conversation took. Set maxTurns to 12: careful agents
+  confirm one step at a time.
+- tools.json "rules" are the business rules of the real deployment. The docs you write in repo/ MUST
+  agree with every one of them that the scenario touches (state them there, so any agent can follow
+  them), and hidden tests must never require behaviour that contradicts them. Do NOT invent extra
+  procedure (checks, confirmations, ordering) beyond these rules: only facts of the scenario's world
+  (prices, dates, eligibility) may be added. An agent that follows these rules exactly and serves
+  the customer well must pass.
+- If tools.json comes with a "runtimeContext" list, start the prompt with that context as the runtime
+  would give it (e.g. "[Canal: WhatsApp · Contato: +55 11 98765-4321 · Data: 2026-10-12]"), consistent
+  with the data.
+- Grade outcomes: the right records changed with the right values, the wrong ones untouched, and the
+  reply. NEVER test that a read-only tool was called. Use calls.jsonl only for effects that leave no trace in the data (a message sent to the right
+  number with the right amount), never for the order or count of read-only calls.
+- Reply checks look for key facts with tolerant matching (amounts, dates in the format the docs
+  require, a reference number), never exact wording. The docs state the reply language and formats.
+  A reply test may only REQUIRE what the docs say the reply must contain, and only FORBID what the
+  docs explicitly forbid. Mentioning other true facts from the data is never wrong.
+- The prompt is the customer's first message as they wrote it, plus one line of context (e.g. "You are
+  the billing support agent. Company rules are in POLICY.md."). It never mentions tests, grading or skills.
+- The untouched fixture (no tool calls, empty reply) MUST fail the hidden suite, and replaying
+  solution/calls.json with solution/reply.md MUST pass it. Verify with: node check.mjs tasks/<id>
+`;
+
+/** Workflow tasks are validated by skillarena itself (it replays the reference calls against the mock). */
+const CHECK_WORKFLOW = (cli: string) => `// node check.mjs tasks/<id>
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+const dir = path.resolve(process.argv[2]);
+try {
+  const out = execFileSync(process.execPath, [${JSON.stringify(cli)}, "validate", "--tasks-dir", path.dirname(dir)], { encoding: "utf8" });
+  console.log(out + "\\nfixture: fails (good)\\nsolution: passes (good)");
+} catch (e) {
+  console.log(String(e.stdout ?? "") + String(e.stderr ?? ""));
+  console.log("NOT VALID: the fixture must fail at least one hidden test and the solution must pass all of them.");
+  process.exit(1);
+}
+`;
+
+const WORKFLOW_PROMPT = (a: SkillAnalysis, scenario: Scenario, id: string) => `You write a benchmark task for tool-using agents (support, ops). Read FORMAT.md, tools.json, and study the complete example in examples/.
+
+Create exactly ONE new task in tasks/${id}/ for this scenario:
+
+  ${scenario.title}
+  Incoming message: ${scenario.request}
+  What must be verifiable: ${scenario.verifiableOutcome}
+
+It will help measure whether this kind of skill helps an agent:
+  ${a.summary}
+  It claims to: ${a.promises.slice(0, 6).join("; ")}
+
+Write the message, docs and data in the language the scenario uses.
+
+Difficulty: a strong frontier model with no special instructions should FAIL roughly half the time.
+Get there with rules that are fully written down but easy to get wrong together: several interacting
+policy rules, amounts or dates that must be computed, records that look right but aren't eligible,
+a second customer with a similar name, a request with one part that must be refused, missing
+information that must be asked for before acting, a tool that returns an error to handle. Never
+through ambiguity or rules that aren't written anywhere the agent can read.
+
+Correctness comes from the message, the docs and the data, never from a particular workflow:
+an agent that ignores the skill but does excellent work must pass.
+
+Keep it compact. Write it, then run \`node check.mjs tasks/${id}\` and fix it until it prints
+"fixture: fails (good)" and "solution: passes (good)".`;
+
 const GENERATE_PROMPT = (a: SkillAnalysis, scenario: Scenario, id: string) => `You write a benchmark task for coding agents. Read FORMAT.md and study the two complete examples in examples/.
 
 Create exactly ONE new task in tasks/${id}/ for this scenario:
@@ -106,8 +217,9 @@ How the agent solved it is in ${transcripts.join(", ")} (stream-json transcripts
 what it checked and what it never had to think about, and aim the new requirements there.
 ` : ""}
 Make it substantially harder, in place (same folder and id), following FORMAT.md: add interacting
-requirements, more edge cases written into the README/doc comments, extra bugs in the existing code that the
-request invites the agent to find, or performance limits. Keep every requirement explicitly written down
+requirements, more edge cases written into the docs, extra bugs in the existing code that the
+request invites the agent to find, performance limits, or (workflow tasks) tricky records in the data
+and policy rules that interact. Keep every requirement explicitly written down
 and fair, and keep any scope limit in the request consistent with the hidden tests. Update hidden/ and solution/.
 
 Run \`node check.mjs tasks/${id}\` after each change until it prints "fixture: fails (good)" and
@@ -131,17 +243,29 @@ async function runGenerator(workdir: string, prompt: string, opts: GenerateOptio
     { cwd: workdir, env, timeoutSec: opts.timeoutSec ?? 3600, onStdout: (c) => transcript.write(c) },
   );
   await new Promise((res) => transcript.end(res));
+  const quota = r.stdout.split("\n").find((l) => l.includes('"type":"result"') && isQuotaError(l));
+  if (quota || (r.code !== 0 && isQuotaError(r.stderr))) throw new QuotaError(quota ? String(JSON.parse(quota).result ?? "") : r.stderr);
   if (r.timedOut) log.warn("task generator hit its time limit; keeping the tasks it finished");
   else if (r.code !== 0) log.warn(`task generator exited with ${r.code}: ${r.stderr.slice(-300)}`);
 }
 
+export const isWorkflow = (a: SkillAnalysis) => a.domain === "tool-workflow";
+
 async function prepareWorkdir(analysis: SkillAnalysis, opts: GenerateOptions): Promise<string> {
   const work = await tmpDir("gen");
   await mkdir(path.join(work, "tasks"), { recursive: true });
-  for (const id of EXAMPLES) await cp(path.join(opts.builtinTasksDir, id), path.join(work, "examples", id), { recursive: true });
-  await writeFile(path.join(work, "FORMAT.md"), FORMAT);
-  await writeFile(path.join(work, "check.mjs"), CHECK);
-  await writeFile(path.join(work, "yaml.mjs"), YAML_MJS);
+  if (isWorkflow(analysis)) {
+    const examples = path.join(opts.builtinTasksDir, "..", "examples", "tasks");
+    for (const id of WORKFLOW_EXAMPLES) await cp(path.join(examples, id), path.join(work, "examples", id), { recursive: true });
+    await writeFile(path.join(work, "FORMAT.md"), WORKFLOW_FORMAT);
+    await writeFile(path.join(work, "check.mjs"), CHECK_WORKFLOW(fileURLToPath(new URL("./cli.js", import.meta.url))));
+    await writeFile(path.join(work, "tools.json"), JSON.stringify({ tools: analysis.tools ?? [], runtimeContext: analysis.runtimeContext ?? [], rules: analysis.rules ?? [] }, null, 2));
+  } else {
+    for (const id of EXAMPLES) await cp(path.join(opts.builtinTasksDir, id), path.join(work, "examples", id), { recursive: true });
+    await writeFile(path.join(work, "FORMAT.md"), FORMAT);
+    await writeFile(path.join(work, "check.mjs"), CHECK);
+    await writeFile(path.join(work, "yaml.mjs"), YAML_MJS);
+  }
   await writeFile(path.join(work, "scenarios.json"), JSON.stringify(analysis.scenarios, null, 2));
   return work;
 }
@@ -200,7 +324,10 @@ async function review(dirs: Map<string, string>, analysis: SkillAnalysis, opts: 
     if (!t || t.kind === "honesty") return { valid: false, ok: false, issues: [] };
     const v = await validateTask(t).catch(() => null);
     if (!v?.ok) return { valid: false, ok: false, issues: [] };
-    const a = await accept(t).catch(() => ({ ok: false, issues: [{ test: "*", reason: "review failed" }] }));
+    const a = await accept(t).catch((err) => {
+      if (err instanceof QuotaError) throw err;
+      return { ok: false, issues: [{ test: "*", reason: "review failed" }] };
+    });
     return { valid: true, ...a };
   };
   await pool([...dirs], 4, async ([id, dir]) => {
@@ -236,7 +363,7 @@ async function install(t: TaskSpec, dest: string): Promise<TaskSpec> {
   return { ...t, id, dir: path.join(dest, id) };
 }
 
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36).replace(/^-+|-+$/g, "");
+const slug = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36).replace(/^-+|-+$/g, "");
 
 /** Generate (or load cached) validated, reviewed tasks for a skill. Returns the folder that holds them. */
 export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis, opts: GenerateOptions & { refresh?: boolean }, accept: Accept): Promise<string> {
@@ -252,7 +379,7 @@ export async function ensureGeneratedTasks(key: string, analysis: SkillAnalysis,
     let id = `gen-${slug(sc.title) || `task-${i + 1}`}`;
     while (ids.has(id)) id += "-x";
     ids.add(id);
-    return { id, prompt: GENERATE_PROMPT(analysis, sc, id) };
+    return { id, prompt: (isWorkflow(analysis) ? WORKFLOW_PROMPT : GENERATE_PROMPT)(analysis, sc, id) };
   });
   log.info(dim(`  generating ${jobs.length} tasks for this skill's domain, in parallel (a few minutes)…`));
   const dirs = await fanOut(jobs, analysis, opts, logFile);
@@ -283,6 +410,30 @@ export async function hardenTasks(
     const attach = await transcripts(id);
     return { id, prompt: HARDEN_PROMPT(id, evidence.round, attach.map((f) => `baseline/${path.basename(f)}`)), seed: path.join(dest, id), attach };
   }));
+  return rework(key, analysis, jobs, opts, accept);
+}
+
+/** Fix tasks a reviewer found unfair after seeing real attempts fail. Returns the ids fixed and accepted. */
+export async function repairTasks(
+  key: string,
+  analysis: SkillAnalysis,
+  items: { id: string; issues: { test: string; reason: string }[] }[],
+  opts: GenerateOptions,
+  accept: Accept,
+): Promise<string[]> {
+  const dest = path.join(generatedDir(key), "tasks");
+  return rework(key, analysis, items.map((x) => ({ id: x.id, prompt: REPAIR_PROMPT(x.id, x.issues), seed: path.join(dest, x.id) })), opts, accept);
+}
+
+async function rework(
+  key: string,
+  analysis: SkillAnalysis,
+  jobs: { id: string; prompt: string; seed: string; attach?: string[] }[],
+  opts: GenerateOptions,
+  accept: Accept,
+): Promise<string[]> {
+  const dest = path.join(generatedDir(key), "tasks");
+  const logFile = path.join(generatedDir(key), "generator.jsonl");
   const dirs = await fanOut(jobs, analysis, opts, logFile);
   const { good } = await review(dirs, analysis, opts, accept, logFile);
   for (const t of good) await install(t, dest);
