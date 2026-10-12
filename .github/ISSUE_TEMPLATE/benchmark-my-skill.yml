@@ -1,0 +1,26 @@
+name: Benchmark my skill
+description: Ask for a skill, plugin or CLAUDE.md to be added to the public leaderboard
+labels: [skill-request]
+body:
+  - type: input
+    id: repo
+    attributes:
+      label: Repository
+      description: owner/repo, a GitHub URL, or a URL to a subfolder
+      placeholder: obra/superpowers
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do users install it?
+      options:
+        - Claude Code plugin
+        - CLAUDE.md / AGENTS.md file
+        - Folder of SKILL.md skills
+        - Not sure (auto-detect)
+  - type: textarea
+    id: claim
+    attributes:
+      label: What should it improve?
+      description: The claim you'd like tested (fewer bugs, honesty, less code, lower cost…)

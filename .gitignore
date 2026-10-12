@@ -1,0 +1,7 @@
+node_modules/
+dist/
+results/*
+!results/.gitkeep
+.cache/
+.DS_Store
+.env

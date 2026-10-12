@@ -1,0 +1,9 @@
+id: csv-quoted-fields
+title: Fix a naive CSV parser that breaks on real spreadsheet exports
+kind: bugfix
+prompt: |
+  `parseCSV` breaks on exports from Excel and Google Sheets: addresses that contain commas get
+  split into several columns and multi-line notes become separate rows. Fix src/csv.js so it
+  follows the contract in its doc comment.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+protected: []

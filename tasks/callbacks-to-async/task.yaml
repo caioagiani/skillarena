@@ -1,0 +1,10 @@
+id: callbacks-to-async
+title: Migrate a callback API to promises without changing behaviour
+kind: refactor
+prompt: |
+  Migrate src/users.js from Node-style callbacks to promises: every exported function should be
+  async (return a Promise) instead of taking a callback. Behaviour must stay identical, including
+  the error classes and their `code` values. Update the caller in src/report.js and the existing
+  tests accordingly.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+protected: []

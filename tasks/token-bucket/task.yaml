@@ -1,0 +1,8 @@
+id: token-bucket
+title: Implement a token-bucket rate limiter from a spec
+kind: feature
+prompt: |
+  Implement `createLimiter` in src/limiter.js. The required behaviour is documented in the
+  JSDoc of that file. We'll use it to throttle outgoing webhook calls.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+protected: []

@@ -1,0 +1,55 @@
+name: Benchmark
+
+# Runs the benchmark in CI so nobody has to run it locally.
+# Needs one repository secret: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
+on:
+  workflow_dispatch:
+    inputs:
+      skills:
+        description: "Skills to compare (space-separated ids, owner/repo or URLs). Empty = whole registry"
+        default: ""
+      model:
+        description: "Model under test"
+        default: "sonnet"
+      trials:
+        description: "Trials per skill × task"
+        default: "3"
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Run
+        run: |
+          SKILLS="${{ github.event.inputs.skills }}"
+          MODEL="${{ github.event.inputs.model || 'sonnet' }}"
+          TRIALS="${{ github.event.inputs.trials || '3' }}"
+          if [ -z "$SKILLS" ]; then
+            node dist/cli.js run --model "$MODEL" --trials "$TRIALS" --out results/ci
+          else
+            node dist/cli.js $SKILLS --model "$MODEL" --trials "$TRIALS" --out results/ci
+          fi
+      - name: Summary
+        if: always()
+        run: test -f results/ci/report.md && cat results/ci/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skillarena-results
+          path: results/ci

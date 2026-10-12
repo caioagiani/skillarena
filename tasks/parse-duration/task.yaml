@@ -1,0 +1,8 @@
+id: parse-duration
+title: Implement a duration parser from a written spec
+kind: feature
+prompt: |
+  Implement `parseDuration` in src/duration.js according to the spec in README.md.
+  It will be used to parse config values like `timeout: 1h30m`.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+protected: []

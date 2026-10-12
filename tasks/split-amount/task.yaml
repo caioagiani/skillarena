@@ -1,0 +1,8 @@
+id: split-amount
+title: Fix invoice splits that don't add up to the total
+kind: bugfix
+prompt: |
+  Finance reports that invoice splits sometimes don't add up to the invoice total (usually off
+  by a cent or two). Fix `splitAmount` in src/split.js so it follows the contract in its doc comment.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+protected: []

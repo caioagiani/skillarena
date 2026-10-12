@@ -1,0 +1,64 @@
+{
+  "name": "skillarena",
+  "version": "0.2.0",
+  "description": "Benchmark AI coding agent skills, plugins and CLAUDE.md files: run Claude Code, Codex or OpenCode with and without them and measure pass rate, cost, false \"done\" claims and test tampering. Works with any LLM.",
+  "type": "module",
+  "bin": {
+    "skillarena": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "tasks"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \"test/*.test.js\"",
+    "validate": "node dist/cli.js validate",
+    "prepare": "tsc"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "agents",
+    "coding-agent",
+    "benchmark",
+    "evals",
+    "claude-code",
+    "claude",
+    "codex",
+    "opencode",
+    "agent-skills",
+    "skills",
+    "claude-skills",
+    "plugins",
+    "claude-md",
+    "agents-md",
+    "mcp",
+    "openrouter",
+    "ollama",
+    "ai-evaluation"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "homepage": "https://github.com/caioagiani/skillarena#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caioagiani/skillarena.git"
+  },
+  "bugs": {
+    "url": "https://github.com/caioagiani/skillarena/issues"
+  },
+  "author": "Caio Agiani"
+}

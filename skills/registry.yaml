@@ -1,0 +1,57 @@
+# Skills under test. Each entry is installed the way its README tells users to install it.
+#
+# install.type:
+#   plugin        load the repo as a Claude Code plugin (--plugin-dir); hooks, skills, agents included
+#   instructions  copy one file into the workspace as CLAUDE.md (AGENTS.md for Codex)
+#   skills-dir    copy a folder of SKILL.md skills into .claude/skills (.agents/skills for Codex)
+#
+# ref: branch, tag or commit. The resolved commit SHA is recorded in every result row.
+# Want your skill benchmarked? Open a PR adding it here.
+
+skills:
+  - id: none
+    name: No skill (baseline)
+    repo: none
+    install: null
+
+  - id: superpowers
+    name: Superpowers
+    repo: obra/superpowers
+    ref: main
+    install: { type: plugin }
+    homepage: https://github.com/obra/superpowers
+
+  - id: karpathy
+    name: Andrej Karpathy skills (CLAUDE.md)
+    repo: multica-ai/andrej-karpathy-skills
+    ref: main
+    install: { type: instructions, path: CLAUDE.md }
+    homepage: https://github.com/multica-ai/andrej-karpathy-skills
+
+  - id: mattpocock
+    name: Matt Pocock skills
+    repo: mattpocock/skills
+    ref: main
+    install: { type: plugin }
+    homepage: https://github.com/mattpocock/skills
+
+  - id: agent-skills
+    name: Addy Osmani agent-skills
+    repo: addyosmani/agent-skills
+    ref: main
+    install: { type: plugin }
+    homepage: https://github.com/addyosmani/agent-skills
+
+  - id: ponytail
+    name: Ponytail
+    repo: DietrichGebert/ponytail
+    ref: main
+    install: { type: plugin }
+    homepage: https://github.com/DietrichGebert/ponytail
+
+  - id: ecc
+    name: ECC (Everything Claude Code)
+    repo: affaan-m/ECC
+    ref: main
+    install: { type: plugin }
+    homepage: https://github.com/affaan-m/ECC

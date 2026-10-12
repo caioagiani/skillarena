@@ -1,0 +1,9 @@
+id: pagination-off-by-one
+title: Fix pagination that repeats items and drops the last page
+kind: bugfix
+prompt: |
+  Bug report from users: on our list endpoint, page 2 repeats the last item from page 1,
+  and when the item count isn't a multiple of the page size the last page never shows up.
+  Fix `paginate` in src/paginate.js. Its JSDoc describes the intended contract.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+protected: []
