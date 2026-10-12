@@ -65,6 +65,7 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
         "--verbose",
         "--dangerously-skip-permissions",
         "--no-session-persistence",
+        "--include-hook-events",
       ];
       if (input.model) args.push("--model", input.model);
       args.push(...input.extraArgs);
