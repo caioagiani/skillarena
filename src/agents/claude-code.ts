@@ -65,6 +65,7 @@ export function claudeCode(opts: ClaudeCodeOptions): Agent {
         "--verbose",
         "--dangerously-skip-permissions",
         "--no-session-persistence",
+        "--include-hook-events",
       ];
       if (input.model) args.push("--model", input.model);
       args.push(...input.extraArgs);
@@ -133,6 +134,8 @@ export function parseStream(stdout: string, meta: StreamMeta): AgentRunResult {
     timedOut: meta.timedOut,
     exitCode: meta.exitCode,
     commands: [],
+    skillCalls: [],
+    hooks: [],
   };
   let lastAssistantText = "";
   let sawResult = false;
@@ -152,6 +155,7 @@ export function parseStream(stdout: string, meta: StreamMeta): AgentRunResult {
         out.builtinPlugins = ev.plugins.filter((p: any) => p.path === "builtin").map((p: any) => String(p.name));
       }
     }
+    if (ev.type === "system" && ev.subtype === "hook_response" && ev.hook_name) out.hooks!.push(String(ev.hook_name));
     if (ev.type === "assistant" && Array.isArray(ev.message?.content) && !ev.parent_tool_use_id) {
       const text = ev.message.content
         .filter((c: any) => c.type === "text")
@@ -162,6 +166,7 @@ export function parseStream(stdout: string, meta: StreamMeta): AgentRunResult {
     if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
       for (const c of ev.message.content) {
         if (c.type === "tool_use" && c.name === "Bash" && typeof c.input?.command === "string") out.commands.push(c.input.command);
+        if (c.type === "tool_use" && c.name === "Skill") out.skillCalls!.push(String(c.input?.skill ?? c.input?.command ?? c.input?.name ?? "?"));
       }
     }
     if (ev.type === "result") {

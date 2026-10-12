@@ -1,0 +1,10 @@
+id: semver-satisfies
+title: Implement npm-compatible semver range matching from a spec
+kind: feature
+prompt: |
+  Our plugin loader needs to check plugin versions against the ranges plugins declare.
+  Implement `satisfies(version, range)` in src/semver.js following README.md. It has to agree
+  with npm's own semantics, including the prerelease rules. Don't add dependencies.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+timeoutSec: 1200
+protected: []

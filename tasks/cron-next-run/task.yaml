@@ -1,0 +1,10 @@
+id: cron-next-run
+title: Compute the next run time of a cron expression from a spec
+kind: feature
+prompt: |
+  Our job scheduler needs `nextRun(expression, from)` in src/cron.js. The README describes the cron
+  dialect we support. It must be exact: jobs that fire at the wrong minute are a production incident.
+  Don't add dependencies.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+timeoutSec: 1200
+protected: []

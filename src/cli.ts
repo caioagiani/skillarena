@@ -8,7 +8,7 @@ import { getAgent } from "./agents/index.js";
 import { askSecret, credentialsPath, hasClaudeAuth, loadEnv, saveCredential } from "./config.js";
 import { makeJudge } from "./honesty.js";
 import { getProvider, PROVIDERS, providerKey, type Provider } from "./providers.js";
-import { summarize, writeReports } from "./report.js";
+import { summarize, writeReports, type Summary } from "./report.js";
 import { readResults, runBench, writeMeta } from "./runner.js";
 import { BASELINE, loadRegistry, parseSkillArg, resolveSkill } from "./skills.js";
 import { HIDDEN_DIR, copyFixture, loadTasks, parseTestCounts } from "./tasks.js";
@@ -25,6 +25,7 @@ ${bold("Usage")}
   skillarena <skill...>          Compare skills against the bare agent (baseline)
   skillarena run                 Benchmark every skill in the registry
   skillarena calibrate           Run the baseline only, find tasks with no signal
+  skillarena doctor              Check Node, agent CLIs and credentials (start here)
   skillarena login [ENV_VAR]     Save credentials (default: your Claude subscription)
   skillarena list                Registered skills, tasks and providers
   skillarena validate            Check tasks: fixture fails, reference solution passes
@@ -54,6 +55,9 @@ ${bold("Options")}
   --out <dir>           Output folder (default: results/<run-id>)
   --run-id <id>         Resume an interrupted run
   --no-isolate          Use your own agent config (contaminates results)
+  --tasks-dir <dir>     Use your own task folder instead of the built-in suite
+  --json                Print the summary as JSON on stdout (progress stays on stderr)
+  --fail-on-regression  Exit 1 if any skill measurably hurts the pass rate (for CI gates)
   --keep                Keep trial workspaces for inspection
   --refresh             Re-fetch skills that track a branch
 `;
@@ -77,6 +81,8 @@ const { values, positionals } = parseArgs({
     "agent-args": { type: "string" },
     "no-isolate": { type: "boolean", default: false },
     keep: { type: "boolean", default: false },
+    json: { type: "boolean", default: false },
+    "fail-on-regression": { type: "boolean", default: false },
     refresh: { type: "boolean", default: false },
     registry: { type: "string" },
     "tasks-dir": { type: "string" },
@@ -87,7 +93,7 @@ const { values, positionals } = parseArgs({
 
 const registryFile = values.registry ?? path.join(ROOT, "skills", "registry.yaml");
 const tasksDir = values["tasks-dir"] ?? path.join(ROOT, "tasks");
-const COMMANDS = new Set(["run", "calibrate", "login", "list", "validate", "report", "help"]);
+const COMMANDS = new Set(["run", "calibrate", "doctor", "login", "list", "validate", "report", "help"]);
 
 function pickTasks<T extends { id: string }>(all: T[], sel: string): T[] {
   if (sel === "all") return all;
@@ -176,9 +182,19 @@ async function bench(specs: SkillSpec[], label: string): Promise<void> {
   await writeMeta(outDir, { finishedAt: new Date().toISOString() });
   const records = await readResults(path.join(outDir, "results.jsonl"));
   const summary = await writeReports(outDir, records);
-  printSummary(summary, { trials });
+  output(summary, trials);
   log.info(dim(`Report: ${path.relative(process.cwd(), path.join(outDir, "index.html"))}  ·  raw data and transcripts in ${path.relative(process.cwd(), outDir)}/`));
   if (trials < 3) log.info(dim("Tip: use --trials 5 or more before trusting a difference."));
+}
+
+function output(summary: Summary, trials?: number) {
+  if (values.json) process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+  else printSummary(summary, { trials });
+  const hurts = summary.skills.filter((k) => k.delta && k.delta.hi < 0).map((k) => k.skill);
+  if (values["fail-on-regression"] && hurts.length) {
+    log.error(`Pass rate regression: ${hurts.join(", ")}`);
+    process.exitCode = 1;
+  }
 }
 
 async function cmdCompare(args: string[]) {
@@ -222,6 +238,42 @@ async function printCalibration(dir: string) {
       ? `\nUse the discriminating tasks: ${bold(`--tasks ${good.join(",")}`)}\n`
       : `\n${yellow("No task discriminates for this model.")} Harder tasks are needed for a meaningful comparison.\n`,
   );
+}
+
+/** One readiness check for people and for agents installing skillarena on someone's behalf. */
+async function cmdDoctor() {
+  const lines: string[] = [];
+  const mark = (ok: boolean | null) => (ok ? green("✓") : ok === null ? dim("·") : red("✗"));
+  const nodeOk = Number(process.versions.node.split(".")[0]) >= 22;
+  lines.push(`${mark(nodeOk)} node ${process.versions.node}${nodeOk ? "" : "  (need 22 or newer)"}`);
+
+  const agents: Record<string, string | null> = {};
+  for (const [id, bin] of [["claude-code", "claude"], ["opencode", "opencode"], ["codex", "codex"]] as const) {
+    agents[id] = (await which(bin)) ? (await exec(bin, ["--version"]).catch(() => ({ stdout: "?" }))).stdout.trim().split("\n")[0] : null;
+    lines.push(`${mark(agents[id] ? true : null)} ${id.padEnd(12)} ${agents[id] ?? dim("not installed")}`);
+  }
+
+  const claudeAuth = hasClaudeAuth();
+  const ready = Object.values(PROVIDERS).filter((p) => p.id !== "anthropic" && process.env[p.keyEnv]).map((p) => p.id);
+  lines.push(
+    `${mark(claudeAuth || ready.length > 0)} credentials  ${claudeAuth ? "Claude ready" : dim("no Claude token")}${ready.length ? ` · ${ready.join(", ")}` : ""}${existsSync(credentialsPath) ? dim(`  (saved in ${credentialsPath})`) : ""}`,
+  );
+
+  process.stdout.write(lines.join("\n") + "\n\n");
+  const claudeReady = Boolean(agents["claude-code"]) && (claudeAuth || ready.length > 0);
+  const others = (["opencode", "codex"] as const).filter((id) => agents[id]);
+  if (nodeOk && claudeReady) {
+    process.stdout.write(`${green("Ready.")} Try: npx skillarena superpowers --tasks split-amount --trials 1\n`);
+    return;
+  }
+  const next = !nodeOk
+    ? "Install Node 22 or newer."
+    : !agents["claude-code"]
+      ? "Install Claude Code: npm i -g @anthropic-ai/claude-code"
+      : "Run `npx skillarena login` in your own terminal (interactive, uses your Claude subscription), or set ANTHROPIC_API_KEY.";
+  process.stdout.write(`${yellow("Claude Code not ready.")} ${next}\n`);
+  if (nodeOk && others.length) process.stdout.write(dim(`${others.join(" and ")} can run now with --agent (they use their own login).\n`));
+  process.exitCode = 1;
 }
 
 async function cmdLogin(envName?: string) {
@@ -295,7 +347,7 @@ async function cmdReport(dir?: string) {
   const records = await readResults(path.join(dir, "results.jsonl"));
   if (!records.length) throw new Error(`No results in ${dir}`);
   const meta = existsSync(path.join(dir, "meta.json")) ? JSON.parse(await readFile(path.join(dir, "meta.json"), "utf8")) : {};
-  printSummary(await writeReports(dir, records), { trials: meta.trials });
+  output(await writeReports(dir, records), meta.trials);
 }
 
 try {
@@ -306,6 +358,7 @@ try {
   else if (!COMMANDS.has(cmd)) await cmdCompare(positionals);
   else if (cmd === "run") await cmdRun();
   else if (cmd === "calibrate") await cmdCalibrate();
+  else if (cmd === "doctor") await cmdDoctor();
   else if (cmd === "login") await cmdLogin(rest[0]);
   else if (cmd === "list") await cmdList();
   else if (cmd === "validate") await cmdValidate();

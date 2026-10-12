@@ -24,24 +24,39 @@ npx skillarena obra/superpowers      # compare against the bare agent
 ```
 
 ```
-skillarena · claude-code · claude-sonnet-5-5 · 8 tasks × 3 trials
+skillarena · claude-code · claude-sonnet-5-5 · 6 tasks × 3 trials
 
-                      none (base)   skill-a       skill-b
-csv-quoted-fields     67%           100% +33      67%
-lru-ttl-cache         33%           67% +33       33%
-slugify-conflict      0%            67% +67       33% +33
-…
-──────────────────────────────────────────────────────────
-pass rate             71%           88% +17       75% +4
-false “done”          13%           4%            8%
-tampered tests        4%            0%            0%
-cost / task           $0.121        $0.198        $0.130
-churn (lines)         64            81            49
+                none    karpathy  superpowers  agent-skills  ponytail  you-should-know  ecc
+pass rate       100%    100%      100%         100%          100%      100%             100%
+false “done”    0%      0%        0%           0%            0%        0%               0%
+cost / task     $0.057  $0.061    $0.073       $0.076        $0.064    $0.057           $0.164
+tokens / task   71k     76k       88k          88k           73k       73k              218k
+median time     15s     15s       16s          16s           14s       16s              28s
+skill used      —       —         22%          0%            0%        0%               100%
 
-skill-a       ▲ helps  +17 pp [+4 pp, +29 pp], +64% cost
-skill-b       ≈ no measurable effect  +4 pp [-8 pp, +13 pp], +7% cost
+superpowers   ≈ no measurable effect  +0 pp [+0 pp, +0 pp], +27% cost
+ecc           ≈ no measurable effect  +0 pp [+0 pp, +0 pp], +186% cost
 ```
-<sub>Output format with made-up numbers for two hypothetical skills. Not a result: run it yourself.</sub>
+<sub>Real run, October 2026, 144 trials (mattpocock omitted for width). Full table, commits and
+findings: <a href="docs/results/2026-10-claude-code-sonnet-5-5.md">docs/results</a>.</sub>
+
+## Install with a prompt
+
+Paste this into Claude Code, Codex, OpenCode, Cursor or any coding agent:
+
+```text
+Fetch and follow the instructions at https://raw.githubusercontent.com/caioagiani/skillarena/main/INSTALL.md
+```
+
+The agent checks Node and your agent CLI, sets up credentials with you (it never sees your token),
+and runs a one-minute smoke test on the skill you choose.
+
+In Claude Code you can also add skillarena as a skill, then just ask *"does superpowers actually help?"*:
+
+```text
+/plugin marketplace add caioagiani/skillarena
+/plugin install skillarena@skillarena
+```
 
 ## Why
 
@@ -62,6 +77,7 @@ Needs Node ≥ 22 and the agent you want to test ([Claude Code](https://docs.cla
 [OpenCode](https://opencode.ai) or [Codex](https://github.com/openai/codex)).
 
 ```bash
+npx skillarena doctor                        # checks Node, agent CLIs and credentials
 npx skillarena login                         # Claude subscription (or: login ANTHROPIC_API_KEY)
 npx skillarena obra/superpowers              # one skill vs baseline
 npx skillarena karpathy ponytail --trials 5  # several skills at once
@@ -89,8 +105,8 @@ Results land in `results/<run-id>/`: a terminal summary, `index.html`, `report.m
 | Claude Code on **DeepSeek / Kimi / GLM** | `--provider deepseek` · `--provider moonshot` · `--provider zai` |
 | Claude Code on **local models** | `--provider ollama --model qwen3-coder` |
 | Any Anthropic-compatible endpoint | `--base-url https://my-gateway/v1` with `ANTHROPIC_AUTH_TOKEN` |
-| **OpenCode** with any of its 75+ providers | `npx skillarena superpowers --agent opencode --model openai/gpt-5` |
-| **Codex CLI** | `npx skillarena superpowers --agent codex` |
+| **OpenCode** with any of its 75+ providers (beta) | `npx skillarena superpowers --agent opencode --model openai/gpt-5` |
+| **Codex CLI** (beta) | `npx skillarena superpowers --agent codex` |
 
 Save keys once with `npx skillarena login OPENROUTER_API_KEY` (stored with `600` permissions), or use
 environment variables. `npx skillarena list` shows which providers are ready.
@@ -109,6 +125,7 @@ The judge that detects false “done” claims can also run on any model: `--jud
 | **Honesty** | Tasks whose requirements contradict each other. The only passing answer is telling the user. A green suite means the agent gamed it. |
 | **Cost · tokens · time** | Is the improvement worth the context the skill injects? |
 | **Churn** | Lines changed. Do “write less code” skills actually write less? |
+| **Skill used** | Share of trials where one of the skill's skills was invoked or one of its hooks reacted (beyond session start). A skill that never triggers can't help. |
 
 ## How it works
 
@@ -141,20 +158,36 @@ The judge that detects false “done” claims can also run on any model: `--jud
 
 ## Tasks
 
+13 tasks, each documented in [docs/tasks.md](docs/tasks.md) with what the agent sees and what the
+hidden suite checks.
+
 | Task | Kind | What makes it hard |
 |---|---|---|
 | `pagination-off-by-one` | bugfix | Three bugs, but the user only reported two |
 | `csv-quoted-fields` | bugfix | RFC 4180 edge cases: escaped quotes, CRLF, multiline fields |
 | `split-amount` | bugfix | Largest remainder method, float traps, exact sums |
+| `revenue-report-mismatch` | bugfix | Six root causes across files and README sections, time zones, FX dates |
 | `parse-duration` | feature | A precise spec with many invalid inputs |
 | `token-bucket` | feature | Continuous refill, clock skew, validation |
 | `lru-ttl-cache` | feature | Adding TTL to existing code that already has a recency bug |
+| `semver-satisfies` | feature | npm range semantics and prerelease rules, 130 cases checked against npm |
+| `cron-next-run` | feature | Vixie day-of-month/day-of-week rule, macros, verified against croner |
+| `json-patch` | feature | RFC 6902/6901 with atomic rollback |
 | `callbacks-to-async` | refactor | Preserve behaviour, error classes and copy semantics |
+| `dedupe-contacts-perf` | refactor | O(n²) → fast, byte-identical output on random inputs |
 | `slugify-conflict` | honesty | Two tests that contradict each other |
 
-Want harder tasks or other languages? See [CONTRIBUTING.md](CONTRIBUTING.md).
+**Frontier models pass all of them.** Sonnet and Haiku 5.5 solve these tasks almost every time, so
+with those models the useful signal is cost, tokens, churn, honesty and whether the skill triggers,
+not pass rate. Bring harder tasks with `--tasks-dir ./my-tasks`
+([format](CONTRIBUTING.md#add-a-task)), or calibrate a smaller model with `npx skillarena calibrate`.
 
 ## Run it in CI, not on your laptop
+
+```bash
+npx skillarena ./my-skill --trials 5 --json > summary.json   # machine-readable summary
+npx skillarena ./my-skill --trials 5 --fail-on-regression    # exit 1 if the skill measurably hurts
+```
 
 The [Benchmark workflow](.github/workflows/benchmark.yml) runs skillarena on GitHub Actions.
 Add `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) as a repository secret, then trigger it
@@ -172,12 +205,36 @@ Open a PR adding it to [`skills/registry.yaml`](skills/registry.yaml), or
   repo: me/my-skill        # install type is auto-detected
 ```
 
-## skillarena vs Caliper
+## How it compares
 
-[Caliper](https://github.com/edonadei/caliper) is great for **skill authors**: write a spec for
-your own skill, check that it triggers on the right prompts, and run it against your real setup.
-skillarena is for **comparing skills**: a fixed task suite, isolated from your personal config,
-with honesty and tampering metrics, so results are comparable across skills and models.
+| | skillarena | [Caliper](https://github.com/edonadei/caliper) | [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals) | [skill-creator](https://github.com/anthropics/skills) benchmark | [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
+|---|---|---|---|---|---|
+| Question it answers | Does this skill help on real coding tasks? | Does my skill trigger and do its job? | Does my plugin pass my eval cases? | Does my skill beat no skill on my prompts? | Do skills help models in general? |
+| Test cases | Shared suite + your own | You write them | You write them (`init` drafts) | You write them | 86 fixed tasks |
+| Grading | Hidden tests, files restored | LLM judge + Python asserts | regex, tool use, files, LLM | Assertions | Deterministic verifiers |
+| False “done”, tampering, honesty | Yes | No | No | No | No |
+| Statistics | Paired bootstrap CI over tasks | pass@k | Mean Δ (3 runs) | Mean ± sd | Pass rate |
+| Agents | Claude Code, OpenCode, Codex | Claude Code, Codex, Pi, Hermes | Claude Code | Claude Code | Many (containers) |
+| Other LLMs | Any (OpenRouter, DeepSeek, Kimi, GLM, Ollama…) | Agent's own | Claude | Claude | Many |
+| Sandbox | Temp workspace + clean config | Temp home | OS sandbox | Subagent | Docker / Modal |
+
+**Use skillarena** to compare skills against each other and against nothing, with results that hold
+up: one variable, isolated runs, hidden tests, confidence intervals, and the failure modes people
+actually complain about (claiming success that isn't there, editing tests).
+
+**Use the others** to develop your own skill: Caliper and `claude plugin eval` check that it triggers
+on the right prompts and does the specific thing it promises, which a general task suite can't.
+
+**Current limitations** (and what we're doing about them):
+
+- **Frontier models saturate the suite.** Pass rate only moves on smaller models or with your own
+  harder tasks. A pack built on real-world repositories is next.
+- **JavaScript only.** Python, TypeScript and Go packs are on the roadmap.
+- **OpenCode and Codex adapters are beta.** Their output parsers are unit-tested, but published runs
+  so far use Claude Code. Reports from other setups are very welcome.
+- **No container sandbox.** Trials run in temp directories with permissions bypassed. Use CI or a VM.
+- **A fixed suite may not touch a skill's niche.** A frontend or data skill should be measured on
+  frontend or data tasks: `--tasks-dir`.
 
 ## FAQ
 
@@ -185,6 +242,10 @@ with honesty and tampering metrics, so results are comparable across skills and 
 skill, the model and the kind of task. Run `npx skillarena <skill>` and read the CI, not just the average.
 
 **Does it work with Codex, OpenCode, Gemini, DeepSeek, Kimi, GLM or local models?** Yes. See [Any LLM](#any-llm).
+
+**Why does everything pass?** Current models are very good at small, well-specified tasks. That is a
+finding too: if a skill doesn't change the pass rate but adds 20% cost, you know what it buys you.
+See [Tasks](#tasks) for how to get a pass-rate signal.
 
 **How much does a run cost?** About `skills × tasks × trials` agent sessions. Use `--max-budget-usd`
 per trial, `--tasks` to narrow the suite, and `--trials 1` while exploring.
@@ -195,7 +256,8 @@ you're comfortable with that on, in a container, or in CI.
 ## Roadmap
 
 - [ ] Public leaderboard site, refreshed weekly
-- [ ] Harder tasks: multi-file features, ambiguous specs, SWE-bench Lite adapter
+- [ ] Real-world task pack (SWE-bench Lite / Terminal-Bench adapter) so frontier models don't saturate
+- [ ] Import `claude plugin eval` and skill-creator eval cases
 - [ ] Python, TypeScript and Go task packs
 - [ ] Docker sandbox mode
 - [ ] Gemini CLI and Cursor CLI adapters

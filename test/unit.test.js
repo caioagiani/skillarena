@@ -9,6 +9,7 @@ import { heuristicClaims, ranTests } from "../dist/honesty.js";
 import { detectInstall, parseSkillArg } from "../dist/skills.js";
 import { bootstrapDelta, wilson } from "../dist/stats.js";
 import { parseTestCounts } from "../dist/tasks.js";
+import { skillUsed } from "../dist/runner.js";
 
 const meta = { timedOut: false, exitCode: 0, durationMs: 1000, stderr: "" };
 
@@ -58,8 +59,10 @@ test("detects test commands", () => {
   assert.equal(ranTests(["cat src/a.js"]), false);
 });
 
-test("parses node test counts", () => {
+test("parses node test counts and failures", async () => {
+  const { parseFailedTests } = await import("../dist/tasks.js");
   assert.deepEqual(parseTestCounts("# tests 3\n# pass 2\n# fail 1\n"), { passed: 2, failed: 1 });
+  assert.deepEqual(parseFailedTests("ok 1 - a\nnot ok 2 - pointer escaping\n  ---\nnot ok 3 - b # TODO\n    not ok 1 - nested"), ["pointer escaping", "b"]);
 });
 
 test("parses skill arguments", () => {
@@ -104,4 +107,36 @@ test("stats", () => {
   const d = bootstrapDelta(new Map([["a", [1, 0]], ["b", [1, 0]], ["c", [1, 0]]]));
   assert.equal(d.delta, 1);
   assert.equal(d.lo, 1);
+});
+
+test("tracks skill invocations, hooks and whether the skill was used", () => {
+  const lines = [
+    { type: "system", subtype: "hook_response", hook_name: "SessionStart:startup" },
+    { type: "assistant", message: { content: [{ type: "tool_use", name: "Skill", input: { skill: "superpowers:systematic-debugging" } }] } },
+    { type: "result", result: "ok" },
+  ];
+  const r = parseStream(lines.map((l) => JSON.stringify(l)).join("\n"), meta);
+  assert.deepEqual(r.hooks, ["SessionStart:startup"]);
+  assert.deepEqual(r.skillCalls, ["superpowers:systematic-debugging"]);
+
+  const plugin = { id: "sp", install: { type: "plugin" }, dir: "/s/sp" };
+  const loaded = [{ name: "superpowers", path: "/s/sp" }];
+  assert.equal(skillUsed(plugin, { skillCalls: [], hooks: ["SessionStart:startup"], loadedPlugins: loaded }), false);
+  assert.equal(skillUsed(plugin, { skillCalls: [], hooks: ["PostToolUse:Edit"], loadedPlugins: loaded }), true);
+  assert.equal(skillUsed(plugin, { skillCalls: ["superpowers:tdd"], hooks: [], loadedPlugins: loaded }), true);
+  assert.equal(skillUsed(plugin, { skillCalls: ["deep-research"], hooks: [], loadedPlugins: loaded }), false);
+  const builtin = { id: "ysk", install: { type: "builtin", plugin: "you-should-know@builtin" }, dir: null };
+  assert.equal(skillUsed(builtin, { skillCalls: ["you-should-know:tip"], hooks: [] }), true);
+  assert.equal(skillUsed({ id: "k", install: { type: "instructions", path: "CLAUDE.md" } }, { skillCalls: [], hooks: [] }), null);
+  assert.equal(skillUsed({ id: "none", install: null }, { skillCalls: [], hooks: [] }), null);
+});
+
+test("errors before the agent did any work are infra errors, not fails", async () => {
+  const { isInfraError } = await import("../dist/report.js");
+  const base = { turns: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, timedOut: false };
+  assert.equal(isInfraError({ ...base, error: "Model not found: x/y" }), true);
+  assert.equal(isInfraError({ ...base, error: "harness: boom", turns: 3, inputTokens: 9 }), true);
+  assert.equal(isInfraError({ ...base, error: "agent error: max turns", turns: 3, inputTokens: 9 }), false);
+  assert.equal(isInfraError({ ...base, error: "timeout", timedOut: true }), false);
+  assert.equal(isInfraError({ ...base }), false);
 });

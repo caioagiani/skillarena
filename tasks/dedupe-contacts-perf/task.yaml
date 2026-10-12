@@ -1,0 +1,11 @@
+id: dedupe-contacts-perf
+title: Make a quadratic contact de-duplication fast without changing its output
+kind: refactor
+prompt: |
+  `dedupeContacts` in src/dedupe.js is far too slow for our biggest customer: their 100k-contact
+  import takes many minutes. Make it fast (100k contacts should take well under a few seconds).
+  It must keep producing exactly the same output as it does today for every possible input:
+  other systems depend on the exact grouping, field values and ordering.
+test: node --test --test-reporter=tap ".skillarena-hidden/*.test.js"
+timeoutSec: 1500
+protected: []

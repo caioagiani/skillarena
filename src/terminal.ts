@@ -65,6 +65,7 @@ export function printSummary(s: Summary, meta: { trials?: number } = {}): void {
   row("tokens / task", cols.map((k) => (Number.isNaN(k.tokensMean) ? "—" : `${Math.round(k.tokensMean / 1000)}k`)));
   row("median time", cols.map((k) => (Number.isNaN(k.durationMedianSec) ? "—" : `${Math.round(k.durationMedianSec)}s`)));
   row("churn (lines)", cols.map((k) => (Number.isNaN(k.churnMean) ? "—" : String(Math.round(k.churnMean)))));
+  if (cols.some((k) => k.usedRate != null)) row("skill used", cols.map((k) => (k.usedRate === 0 ? yellow("0%") : pct(k.usedRate))));
   const excluded = cols.reduce((a, k) => a + k.excluded, 0);
   if (excluded) out.push(dim(`${excluded} trial(s) excluded as infra errors`));
   out.push("");

@@ -1,0 +1,15 @@
+{
+  "name": "skillarena",
+  "description": "Benchmark agent skills, plugins and CLAUDE.md files.",
+  "owner": {
+    "name": "caioagiani",
+    "url": "https://github.com/caioagiani"
+  },
+  "plugins": [
+    {
+      "name": "skillarena",
+      "source": "./plugin",
+      "description": "Benchmark whether a skill, plugin or CLAUDE.md actually helps your coding agent."
+    }
+  ]
+}

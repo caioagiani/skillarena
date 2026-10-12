@@ -1,11 +1,12 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Judge } from "./honesty.js";
 import { ranTests } from "./honesty.js";
 import { commitBase, copyFixture, diffStats, grade } from "./tasks.js";
-import type { Agent, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
+import type { Agent, AgentRunResult, ResolvedSkill, TaskSpec, TrialRecord } from "./types.js";
 import { dim } from "./terminal.js";
+import { isInfraError } from "./report.js";
 import { log, pool, tmpDir, truncate } from "./util.js";
 
 export interface RunOptions {
@@ -62,8 +63,10 @@ export async function runBench(o: RunOptions): Promise<TrialRecord[]> {
   const total = jobs.length;
   let finished = 0;
   const records: TrialRecord[] = [];
+  let abort: string | null = null;
 
   await pool(jobs, o.concurrency, async (job) => {
+    if (abort) return;
     let rec: TrialRecord;
     // Plugin loading can race at startup (seen with builtin plugins): retry instead of losing the trial.
     for (let attempt = 1; ; attempt++) {
@@ -77,10 +80,14 @@ export async function runBench(o: RunOptions): Promise<TrialRecord[]> {
     const mark = rec.error ? "\x1b[33m⚠\x1b[0m" : rec.pass ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
     const cost = rec.costUsd != null ? `$${rec.costUsd.toFixed(3)}` : "";
     const flags = [rec.falseDone && "false-done", rec.tampered && "tampered", rec.gamed && "gamed"].filter(Boolean).join(",");
+    // Same setup failure on the first trials (bad model id, missing key): stop instead of burning the queue.
+    const first = records.slice(0, 3);
+    if (!abort && first.length === Math.min(3, total) && first.every((r) => isInfraError(r) && r.error === first[0].error)) abort = first[0].error!;
     log.info(
       `[${finished}/${total}] ${mark} ${job.skill.id} × ${job.task.id} #${job.trial}  ${cost} ${(rec.durationMs / 1000).toFixed(0)}s ${flags}${rec.error ? `  ${truncate(rec.error, 120)}` : ""}`,
     );
   });
+  if (abort) throw new Error(`Stopped: the first trials all failed before the agent did any work.\n  ${abort}`);
   return records;
 }
 
@@ -108,6 +115,31 @@ function checkBuiltins(skill: ResolvedSkill, builtins: string[], active: string[
     if (b !== own && on) return `builtin plugin ${b} leaked into the "${skill.id}" condition`;
   }
   return null;
+}
+
+/**
+ * Whether the skill visibly did something in this trial: one of its skills was invoked, or one of its
+ * hooks reacted to the session (isolated configs have no hooks of their own). SessionStart hooks only
+ * inject fixed context, like an instruction file, so they don't count. Instruction files are always
+ * in context and not observable: null.
+ */
+export function skillUsed(skill: ResolvedSkill, res: Pick<AgentRunResult, "skillCalls" | "hooks" | "loadedPlugins">): boolean | null {
+  const install = skill.install;
+  if (!install || install.type === "instructions" || !res.skillCalls) return null;
+  const calls = res.skillCalls;
+  if ((res.hooks ?? []).some((h) => !h.startsWith("SessionStart"))) return true;
+  if (install.type === "builtin") return calls.some((c) => c.startsWith(`${install.plugin.replace(/@builtin$/, "")}:`));
+  if (install.type === "plugin") {
+    const expected = skill.dir ? path.resolve(skill.dir, install.path ?? "") : null;
+    const name = res.loadedPlugins?.find((p) => path.resolve(p.path) === expected)?.name;
+    return name ? calls.some((c) => c.startsWith(`${name}:`)) : calls.length > 0;
+  }
+  if (install.type === "skills-dir") {
+    const dir = skill.dir ? path.join(skill.dir, install.path) : null;
+    const names = install.single || !dir || !existsSync(dir) ? [skill.id] : readdirSync(dir);
+    return calls.some((c) => names.includes(c.split(":").pop()!));
+  }
+  return calls.length > 0;
 }
 
 function rotate<T>(xs: T[], n: number): T[] {
@@ -161,6 +193,7 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       pass,
       testsPassed: g.testsPassed,
       testsFailed: g.testsFailed,
+      failedTests: g.failedTests,
       tampered: g.tampered,
       tamperedFiles: g.tamperedFiles,
       gamed: g.gamed,
@@ -182,6 +215,9 @@ async function runTrial(o: RunOptions, { skill, task, trial }: Job): Promise<Tri
       timedOut: res.timedOut,
       error: res.error,
       plugins: (res.loadedPlugins ?? []).map((p) => p.name),
+      skillCalls: res.skillCalls ?? [],
+      hooks: res.hooks ?? [],
+      skillUsed: skillUsed(skill, res),
       transcript,
       finalMessage: truncate(res.finalMessage, 4000),
     };
@@ -206,6 +242,7 @@ function errorRecord(o: RunOptions, { skill, task, trial }: Job, error: string):
     pass: false,
     testsPassed: 0,
     testsFailed: 0,
+    failedTests: [],
     tampered: false,
     tamperedFiles: [],
     gamed: false,
@@ -227,6 +264,9 @@ function errorRecord(o: RunOptions, { skill, task, trial }: Job, error: string):
     timedOut: false,
     error: `harness: ${error}`,
     plugins: [],
+    skillCalls: [],
+    hooks: [],
+    skillUsed: null,
     transcript: "",
     finalMessage: "",
   };
