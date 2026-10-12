@@ -21,9 +21,9 @@ the user posted with one short line per step. Do not install anything else.
    so later they can just ask "does this skill help?". They run
    `/plugin marketplace add caioagiani/skillarena` and then `/plugin install skillarena@skillarena`.
 
-4. **Smoke test.** Ask which skill to benchmark if the user hasn't said (a registry id from
-   `npx skillarena list`, `owner/repo`, a GitHub URL, a local path or `name@builtin`; default
-   `superpowers`). Run one quick trial:
+4. **Smoke test.** Use the skill the user named in their request. Only if they named none, ask
+   (a registry id from `npx skillarena list`, `owner/repo`, a GitHub URL, a local path or
+   `name@builtin`), or fall back to `superpowers`. Run one quick trial with that skill:
    `npx -y skillarena@latest <skill> --tasks split-amount --trials 1`.
    It takes about a minute and costs a few cents. Show the summary table.
 
