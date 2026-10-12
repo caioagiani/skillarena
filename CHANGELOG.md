@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/caioagiani/skillarena/compare/v0.7.0...v0.7.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **workflow:** keep generated tasks consistent with the skill's rules ([#18](https://github.com/caioagiani/skillarena/issues/18)) ([8f69f17](https://github.com/caioagiani/skillarena/commit/8f69f1727a7fdbda75df422367f6194e3cd75bb7))
+
 ## [0.7.0](https://github.com/caioagiani/skillarena/compare/v0.6.0...v0.7.0) (2026-10-12)
 
 
