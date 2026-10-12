@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/caioagiani/skillarena/compare/v0.4.1...v0.4.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* agent-args parsing, trial timeouts and Codex with local models ([#10](https://github.com/caioagiani/skillarena/issues/10)) ([b054342](https://github.com/caioagiani/skillarena/commit/b05434216e752bcbd7395fb3db34b11e3e3ac4e4))
+
 ## [0.4.1](https://github.com/caioagiani/skillarena/compare/v0.4.0...v0.4.1) (2026-10-12)
 
 
