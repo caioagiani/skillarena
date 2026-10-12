@@ -109,7 +109,8 @@ calls (what changed, what was sent) and the facts the customer was told.
    lists its domain, what it promises, the tools it uses, and eight realistic requests where that should matter.
 2. **Generate.** One agent per scenario builds the task (a repo or mock tools and data), a strict
    hidden suite and a reference solution. It sees the scenarios, never the skill text, so tasks don't
-   reward copying the skill's procedure.
+   reward copying the skill's procedure. For support skills it also gets the business rules the skill
+   imposes, written into the task's policy docs so both agents can follow them and no test contradicts them.
 3. **Validate.** The fixture must fail the hidden suite and the solution must pass it.
 4. **Fairness review.** An independent reviewer gets the request, the repo and the hidden tests, and
    rejects tests a careful engineer couldn't anticipate: undocumented behaviour, changes outside the

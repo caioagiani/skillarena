@@ -32,7 +32,7 @@ async function filesUnder(dir: string, max: number): Promise<string> {
   return parts.join("\n");
 }
 
-const PROMPT = (task: TaskSpec, repo: string, hidden: string, mustChange: string[], failing?: string[], mock?: string, attempts?: string[]) => `You audit a benchmark task for ${mock ? "tool-using" : "coding"} agents before it is used. Be strict.
+const PROMPT = (task: TaskSpec, repo: string, hidden: string, mustChange: string[], failing?: string[], mock?: string, attempts?: string[], rules?: string[]) => `You audit a benchmark task for ${mock ? "tool-using" : "coding"} agents before it is used. Be strict.
 
 An agent receives the REQUEST and the REPO. It never sees the HIDDEN tests, which grade its work.${mock ? `
 It can call the mock TOOLS below: it sees their names, descriptions, input schemas and what they return,
@@ -42,7 +42,10 @@ A simulated customer answers the agent's questions, playing only this persona:
 <persona>
 ${task.customer.persona.trim()}
 </persona>
-A test that needs information the persona doesn't have, or that depends on the number of turns, is unfair.` : ""}
+A test that needs information the persona doesn't have, or that depends on the number of turns, is unfair.` : ""}${rules?.length ? `
+The real deployment imposes these business rules. A test that an agent following them exactly would
+fail (because the task's docs or tests contradict them) is unfair:
+${rules.map((r) => `- ${r}`).join("\n")}` : ""}
 A task is fair only if a careful, competent engineer could pass every hidden test using only the
 request and what the repo states (README, doc comments, existing tests, existing code behaviour).
 
@@ -85,12 +88,15 @@ ${mock}
 </tools>` : ""}`;
 
 /** Independent fairness review of a (generated) task. */
-export async function auditTask(task: TaskSpec, opts: { model: string; isolate: boolean; failing?: string[]; attempts?: string[] }): Promise<AuditResult> {
+export async function auditTask(
+  task: TaskSpec,
+  opts: { model: string; isolate: boolean; failing?: string[]; attempts?: string[]; rules?: string[] },
+): Promise<AuditResult> {
   const repo = await filesUnder(path.join(task.dir, "repo"), 30_000);
   const hidden = await filesUnder(path.join(task.dir, "hidden"), 20_000);
   const mock = task.kind === "workflow" ? await filesUnder(path.join(task.dir, "mock"), 20_000) : undefined;
   const mustChange = (await validateTask(task)).before.failedTests;
-  const reply = await askClaude(PROMPT(task, repo, hidden, mustChange, opts.failing, mock, opts.attempts), { model: opts.model, isolate: opts.isolate, timeoutSec: 300 });
+  const reply = await askClaude(PROMPT(task, repo, hidden, mustChange, opts.failing, mock, opts.attempts, task.kind === "workflow" ? opts.rules : undefined), { model: opts.model, isolate: opts.isolate, timeoutSec: 300 });
   const r = parseJsonReply<AuditResult>(reply);
   return { fair: Boolean(r.fair) && !(r.issues ?? []).length, issues: r.issues ?? [] };
 }

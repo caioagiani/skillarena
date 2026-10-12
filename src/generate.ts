@@ -119,6 +119,11 @@ Hard rules:
   record found, which option they prefer, their phone or e-mail), so a careful agent is never stuck.
   Tests never depend on how many turns the conversation took. Set maxTurns to 12: careful agents
   confirm one step at a time.
+- tools.json "rules" are the business rules of the real deployment. The docs you write in repo/ MUST
+  agree with every one of them that the scenario touches (state them there, so any agent can follow
+  them), and hidden tests must never require behaviour that contradicts them. You may add rules the
+  scenario needs, as long as they don't conflict. An agent that follows these rules exactly and serves
+  the customer well must pass.
 - If tools.json comes with a "runtimeContext" list, start the prompt with that context as the runtime
   would give it (e.g. "[Canal: WhatsApp · Contato: +55 11 98765-4321 · Data: 2026-10-12]"), consistent
   with the data.
@@ -253,7 +258,7 @@ async function prepareWorkdir(analysis: SkillAnalysis, opts: GenerateOptions): P
     for (const id of WORKFLOW_EXAMPLES) await cp(path.join(examples, id), path.join(work, "examples", id), { recursive: true });
     await writeFile(path.join(work, "FORMAT.md"), WORKFLOW_FORMAT);
     await writeFile(path.join(work, "check.mjs"), CHECK_WORKFLOW(fileURLToPath(new URL("./cli.js", import.meta.url))));
-    await writeFile(path.join(work, "tools.json"), JSON.stringify({ tools: analysis.tools ?? [], runtimeContext: analysis.runtimeContext ?? [] }, null, 2));
+    await writeFile(path.join(work, "tools.json"), JSON.stringify({ tools: analysis.tools ?? [], runtimeContext: analysis.runtimeContext ?? [], rules: analysis.rules ?? [] }, null, 2));
   } else {
     for (const id of EXAMPLES) await cp(path.join(opts.builtinTasksDir, id), path.join(work, "examples", id), { recursive: true });
     await writeFile(path.join(work, "FORMAT.md"), FORMAT);

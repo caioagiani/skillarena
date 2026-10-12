@@ -29,8 +29,8 @@ export interface SuiteOptions {
 }
 
 /** An independent reviewer rejects tasks whose hidden tests a careful engineer couldn't anticipate. */
-const fairness = (o: SuiteOptions): Accept => async (t) => {
-  const r = await auditTask(t, { model: o.generatorModel, isolate: o.isolate });
+const fairness = (o: SuiteOptions, a: SkillAnalysis): Accept => async (t) => {
+  const r = await auditTask(t, { model: o.generatorModel, isolate: o.isolate, rules: a.rules });
   return { ok: r.fair, issues: r.issues };
 };
 
@@ -99,6 +99,7 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
         isolate: o.isolate,
         failing: [...new Set(failed.flatMap((r) => r.failedTests))],
         attempts: failed.slice(0, 2).map((r) => r.finalMessage),
+        rules: analysis.rules,
       }).catch((err) => {
         if (err instanceof QuotaError) throw err;
         return null;
@@ -107,7 +108,7 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
     });
     if (!unfair.length) return;
     log.info(dim(`  ${unfair.length} task(s) the bare agent never solved look unfair after seeing its attempts; repairing…`));
-    const fixed = await repairTasks(key, analysis, unfair, gen, fairness(o));
+    const fixed = await repairTasks(key, analysis, unfair, gen, fairness(o, analysis));
     for (const { id } of unfair.filter((x) => !fixed.includes(x.id))) {
       await rm(path.join(tasksDir, id), { recursive: true, force: true });
       delete perTask[id];
@@ -122,7 +123,7 @@ async function calibrate(key: string, analysis: SkillAnalysis, tasksDir: string,
     const tooEasy = Object.entries(perTask).filter(([, v]) => v >= 1).map(([id]) => id);
     if (!tooEasy.length) break;
     log.info(dim(`  round ${round}: the bare agent always solved ${tooEasy.length} task(s); making them harder…`));
-    const done = await hardenTasks(key, analysis, tooEasy, gen, fairness(o), { round, transcriptsDir: path.join(runDir(`r${round}`), "transcripts") });
+    const done = await hardenTasks(key, analysis, tooEasy, gen, fairness(o, analysis), { round, transcriptsDir: path.join(runDir(`r${round}`), "transcripts") });
     if (!done.length) break;
     done.forEach((id) => hardened.add(id));
     await settle(done, `r${round + 1}`);
@@ -177,7 +178,7 @@ export async function buildSuite(skills: ResolvedSkill[], o: SuiteOptions): Prom
       count: o.count,
       builtinTasksDir: o.builtinTasksDir,
       refresh: o.refresh,
-    }, fairness(o));
+    }, fairness(o, analysis));
     const tasks = await loadTasks(dir);
     if (!tasks.length) {
       log.warn(`${skill.id}: no valid tasks could be generated. Using the built-in suite for it.`);
