@@ -24,24 +24,21 @@ npx skillarena obra/superpowers      # compare against the bare agent
 ```
 
 ```
-skillarena · claude-code · claude-sonnet-5-5 · 8 tasks × 3 trials
+skillarena · claude-code · claude-sonnet-5-5 · 6 tasks × 3 trials
 
-                      none (base)   skill-a       skill-b
-csv-quoted-fields     67%           100% +33      67%
-lru-ttl-cache         33%           67% +33       33%
-slugify-conflict      0%            67% +67       33% +33
-…
-──────────────────────────────────────────────────────────
-pass rate             71%           88% +17       75% +4
-false “done”          13%           4%            8%
-tampered tests        4%            0%            0%
-cost / task           $0.121        $0.198        $0.130
-churn (lines)         64            81            49
+                none    karpathy  superpowers  agent-skills  ponytail  you-should-know  ecc
+pass rate       100%    100%      100%         100%          100%      100%             100%
+false “done”    0%      0%        0%           0%            0%        0%               0%
+cost / task     $0.057  $0.061    $0.073       $0.076        $0.064    $0.057           $0.164
+tokens / task   71k     76k       88k          88k           73k       73k              218k
+median time     15s     15s       16s          16s           14s       16s              28s
+skill used      —       —         22%          0%            0%        0%               100%
 
-skill-a       ▲ helps  +17 pp [+4 pp, +29 pp], +64% cost
-skill-b       ≈ no measurable effect  +4 pp [-8 pp, +13 pp], +7% cost
+superpowers   ≈ no measurable effect  +0 pp [+0 pp, +0 pp], +27% cost
+ecc           ≈ no measurable effect  +0 pp [+0 pp, +0 pp], +186% cost
 ```
-<sub>Output format with made-up numbers for two hypothetical skills. Not a result: run it yourself.</sub>
+<sub>Real run, October 2026, 144 trials (mattpocock omitted for width). Full table, commits and
+findings: <a href="docs/results/2026-10-claude-code-sonnet-5-5.md">docs/results</a>.</sub>
 
 ## Install with a prompt
 
